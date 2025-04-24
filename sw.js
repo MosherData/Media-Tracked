@@ -1,4 +1,4 @@
-const CACHE_NAME = 'storyshelf-v1';
+const CACHE_NAME = 'mediatracked-v1';
 const urlsToCache = [
   '/',
   '/index.html',
