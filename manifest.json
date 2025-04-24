@@ -1,7 +1,7 @@
 {
-  "name": "StoryShelf",
-  "short_name": "StoryShelf",
-  "description": "Track books, audiobooks, movies, TV shows, and games privately and offline with StoryShelf.",
+  "name": "MediaTracked",
+  "short_name": "MediaTracked",
+  "description": "Track books, audiobooks, movies, TV shows, and games privately and offline with MediaTracked.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f3f4f6",
