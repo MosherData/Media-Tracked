@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>StoryShelf</title>
+  <title>MediaTracked</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="StoryShelf">
-  <meta name="description" content="Track books, audiobooks, movies, TV shows, and games privately and offline with StoryShelf.">
+  <meta name="apple-mobile-web-app-title" content="MediaTracked">
+  <meta name="description" content="Track books, audiobooks, movies, TV shows, and games privately and offline with MediaTracked.">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icon.png">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous">
@@ -16,13 +16,13 @@
 <body class="min-h-screen bg-gray-200 font-sans antialiased">
   <div class="max-w-3xl mx-auto p-6">
     <header class="text-center mb-10">
-      <h1 class="text-4xl font-extrabold text-gray-900 animate-fade-in">StoryShelf</h1>
-      <p class="text-lg text-gray-600 mt-3 animate-fade-in-delayed">Your private shelf for books, audiobooks, movies, TV shows, and games.</p>
+      <h1 class="text-4xl font-extrabold text-gray-900 animate-fade-in">MediaTracked</h1>
+      <p class="text-lg text-gray-600 mt-3 animate-fade-in-delayed">Track your books, audiobooks, movies, TV shows, and games—privately and offline.</p>
     </header>
 
     <!-- Ad and Affiliate Settings -->
     <section id="ad-settings" class="bg-blue-50 p-4 rounded-lg mb-10 text-center animate-fade-in">
-      <p class="text-gray-800 mb-2">Love StoryShelf? <button onclick="removeAds()" class="text-blue-500 hover:underline font-semibold">Remove Ads & Links for $5</button></p>
+      <p class="text-gray-800 mb-2">Love MediaTracked? <button onclick="removeAds()" class="text-blue-500 hover:underline font-semibold">Remove Ads & Links for $5</button></p>
       <p class="text-sm text-gray-600">Ads and affiliate links keep us running! <a href="https://forms.gle/YOUR_FEEDBACK_FORM" target="_blank" class="text-blue-500 hover:underline">Share feedback</a></p>
     </section>
 
@@ -97,7 +97,7 @@
 
     <!-- Media List -->
     <section class="bg-white p-6 rounded-lg shadow-md mb-10 transition-transform duration-300 hover:scale-[1.02]">
-      <h2 class="text-2xl font-semibold text-gray-900 mb-4">Your Shelf</h2>
+      <h2 class="text-2xl font-semibold text-gray-900 mb-4">Your Media</h2>
       <div id="media-list" class="space-y-4"></div>
     </section>
 
@@ -140,8 +140,8 @@
   </div>
 
   <script>
-    let media = JSON.parse(localStorage.getItem('storyshelf_media')) || [];
-    let isAdFree = JSON.parse(localStorage.getItem('storyshelf_isAdFree')) || false;
+    let media = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
+    let isAdFree = JSON.parse(localStorage.getItem('mediatracked_isAdFree')) || false;
     let isAffiliateCollapsed = false;
     const statusOptions = {
       Book: ['To Read', 'Reading', 'Read'],
@@ -187,7 +187,7 @@
     }
 
     function saveMedia() {
-      localStorage.setItem('storyshelf_media', JSON.stringify(media));
+      localStorage.setItem('mediatracked_media', JSON.stringify(media));
     }
 
     function updateStatusOptions() {
@@ -319,7 +319,7 @@
 
     function removeAds() {
       isAdFree = true;
-      localStorage.setItem('storyshelf_isAdFree', JSON.stringify(isAdFree));
+      localStorage.setItem('mediatracked_isAdFree', JSON.stringify(isAdFree));
       updateAdVisibility();
       alert('Ads and affiliate links removed! (Simulated $5 purchase. Add Stripe: https://stripe.com/docs/payments)');
     }
@@ -375,7 +375,7 @@
       };
 
       mediaList.innerHTML = filteredMedia.length === 0
-        ? '<p class="text-gray-500 text-center py-4">Your shelf is empty. Add media to start!</p>'
+        ? '<p class="text-gray-500 text-center py-4">Your media list is empty. Add media to start!</p>'
         : filteredMedia.map(item => `
             <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
               <div class="flex items-center gap-4">
