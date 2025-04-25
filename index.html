@@ -469,7 +469,7 @@
 
         // Load the database
         if (!db) {
-          const response = await fetch(`https://api.github.com/repos/yourusername/mediatracked-user-data/contents/mediatracked.db`, {
+          const response = await fetch(`https://api.github.com/MosherData/Media-Tracked/blob/main/mediatracked.db`, {
             headers: {
               'Authorization': `token ${githubPAT}`,
               'Accept': 'application/vnd.github.v3+json'
