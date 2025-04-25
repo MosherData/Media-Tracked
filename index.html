@@ -12,6 +12,10 @@
   <link rel="apple-touch-icon" href="/icon.png">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous">
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Include CryptoJS for encryption -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <!-- Include sql.js for SQLite in the browser -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.min.js"></script>
 </head>
 <body class="min-h-screen bg-gray-200 font-sans antialiased">
   <div class="max-w-3xl mx-auto p-6">
@@ -20,17 +24,25 @@
       <p class="text-lg text-gray-600 mt-3 animate-fade-in-delayed">Track your books, audiobooks, movies, TV shows, and games—privately and offline.</p>
     </header>
 
-    <!-- Ad and Affiliate Settings 
-    <section id="ad-settings" class="bg-blue-50 p-4 rounded-lg mb-10 text-center animate-fade-in">
-      <p class="text-gray-800 mb-2">Love MediaTracked? <button onclick="showAdRemoval()" class="text-blue-500 hover:underline font-semibold">Remove Ads & Links for $5</button></p>
-      <p id="enter-code-section" class="text-gray-800 mb-2 hidden">
+    <!-- Cloud Storage Settings -->
+    <section id="cloud-storage-settings" class="bg-green-50 p-4 rounded-lg mb-10 text-center animate-fade-in">
+      <p class="text-gray-800 mb-2">Sync your media list across devices! <button onclick="showCloudStoragePurchase()" class="text-green-500 hover:underline font-semibold">Enable Cloud Storage for $5</button></p>
+      <p id="enter-cloud-code-section" class="text-gray-800 mb-2 hidden">
         Already paid? Enter your code: 
-        <input id="ad-removal-code" type="text" placeholder="e.g., ADFREE-XYZ123" class="p-1 border border-gray-300 rounded-md mx-2" />
-        <button onclick="applyAdRemovalCode()" class="text-blue-500 hover:underline font-semibold">Apply</button>
+        <input id="cloud-storage-code" type="text" placeholder="e.g., CLOUD-XYZ123" class="p-1 border border-gray-300 rounded-md mx-2" />
+        <button onclick="applyCloudStorageCode()" class="text-green-500 hover:underline font-semibold">Apply</button>
       </p>
-      <p id="ad-removal-message" class="text-gray-800 mb-2 hidden"></p>
-      <p class="text-sm text-gray-600">Ads and affiliate links keep us running! <a href="https://forms.gle/YOUR_FEEDBACK_FORM" target="_blank" class="text-blue-500 hover:underline">Share feedback</a></p>
-    </section> -->
+      <p id="cloud-storage-message" class="text-gray-800 mb-2 hidden"></p>
+      <p id="cloud-sync-section" class="text-gray-800 mb-2 hidden">
+        <label class="flex items-center justify-center gap-2">
+          <input id="cloud-sync-enabled" type="checkbox" onchange="toggleCloudSync()" />
+          Enable Cloud Sync
+        </label>
+        <input id="github-pat" type="password" placeholder="GitHub Personal Access Token" class="p-1 border border-gray-300 rounded-md mx-2 mt-2 hidden" />
+        <button id="save-pat-button" onclick="saveGitHubPAT()" class="text-green-500 hover:underline font-semibold mt-2 hidden">Save PAT</button>
+        <p id="sync-status" class="text-sm text-gray-600 mt-2"></p>
+      </p>
+    </section>
 
     <!-- Add Media Form -->
     <section class="bg-white p-6 rounded-lg shadow-md mb-10 transition-transform duration-300 hover:scale-[1.02]">
@@ -122,40 +134,22 @@
         </button>
       </div>
       <div id="affiliate-content" class="space-y-2">
-        <p class="text-gray-600 text-sm">Discover your next favorite media:</p>
+        <p class="text-gray-600 text-sm">Discover your next favorite media (affiliate links):</p>
         <div id="affiliate-list" class="flex flex-col gap-2"></div>
       </div>
-    </section>
-
-    <!-- Ad Banner -->
-    <section id="ad-banner" class="text-center mb-10">
-      <ins class="adsbygoogle"
-           style="display:block"
-           data-ad-client="ca-pub-0000000000000000"
-           data-ad-slot="1234567890"
-           data-ad-format="auto"
-           data-full-width-responsive="true"></ins>
-      <div id="ad-placeholder" class="hidden bg-gray-200 p-2 rounded-lg text-gray-600 text-sm">
-        Ad loading... (Media-related ads, e.g., books, games)
-      </div>
-      <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-0000000000000000" crossorigin="anonymous"></script>
-      <script>
-        document.addEventListener('DOMContentLoaded', () => {
-          try {
-            (adsbygoogle = window.adsbygoogle || []).push({});
-          } catch (e) {
-            document.getElementById('ad-banner').innerHTML = '<p class="text-gray-500 text-sm">Ad failed to load. Please check your connection.</p>';
-          }
-        });
-      </script>
     </section>
   </div>
 
   <script>
     let media = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
-    let adRemovalCode = localStorage.getItem('mediatracked_adRemovalCode') || null;
-    let isAdFree = adRemovalCode !== null;
+    let cloudStorageCode = localStorage.getItem('mediatracked_cloudStorageCode') || null;
+    let isCloudStorageEnabled = false; // Will be set after loading from cloud
+    let isCloudSyncEnabled = localStorage.getItem('mediatracked_cloudSyncEnabled') === 'true';
+    let githubPAT = localStorage.getItem('mediatracked_githubPAT') || '';
+    let userId = localStorage.getItem('mediatracked_userId') || generateUserId();
     let isAffiliateCollapsed = false;
+    let db; // SQLite database instance
+
     const statusOptions = {
       Book: ['To Read', 'Reading', 'Read'],
       Audiobook: ['To Listen', 'Listening', 'Listened'],
@@ -189,9 +183,18 @@
     };
 
     const AMAZON_AFFILIATE_TAG = 'YOUR_AMAZON_TAG'; // Replace with your Amazon Associates tag (e.g., 'yourtag-20')
+    const AMAZON_ACCESS_KEY = 'YOUR_ACCESS_KEY'; // Replace with your PA-API Access Key
+    const AMAZON_SECRET_KEY = 'YOUR_SECRET_KEY'; // Replace with your PA-API Secret Key
+    const ENCRYPTION_KEY = 'your-secure-encryption-key'; // Replace with a secure key in production
 
     // Cache for suggestions to avoid repeated queries
     let suggestionsCache = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
+
+    function generateUserId() {
+      const id = 'user_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('mediatracked_userId', id);
+      return id;
+    }
 
     function sanitizeInput(input) {
       const div = document.createElement('div');
@@ -199,47 +202,70 @@
       return div.innerHTML;
     }
 
+    async function initSQLite() {
+      const SQL = await initSqlJs({
+        locateFile: () => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.wasm'
+      });
+      return SQL;
+    }
+
+    function calculateMediaTypes() {
+      const types = {};
+      media.forEach(item => {
+        types[item.type] = (types[item.type] || 0) + 1;
+      });
+      return JSON.stringify(types);
+    }
+
     function saveMedia() {
       localStorage.setItem('mediatracked_media', JSON.stringify(media));
+      if (isCloudSyncEnabled && githubPAT) {
+        syncToCloud();
+      }
     }
 
     function saveSuggestions() {
       localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+      if (isCloudSyncEnabled && githubPAT) {
+        syncToCloud();
+      }
     }
 
-    function generateAdRemovalCode() {
+    function generateCloudStorageCode() {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let code = 'ADFREE-';
+      let code = 'CLOUD-';
       for (let i = 0; i < 6; i++) {
         code += chars.charAt(Math.floor(Math.random() * chars.length));
       }
       return code;
     }
 
-    function showAdRemoval() {
-      const code = generateAdRemovalCode();
-      adRemovalCode = code;
-      localStorage.setItem('mediatracked_adRemovalCode', code);
-      isAdFree = true;
-      updateAdVisibility();
-      const message = document.getElementById('ad-removal-message');
+    function showCloudStoragePurchase() {
+      const code = generateCloudStorageCode();
+      cloudStorageCode = code;
+      localStorage.setItem('mediatracked_cloudStorageCode', code);
+      isCloudStorageEnabled = true;
+      updateCloudStorageVisibility();
+      const message = document.getElementById('cloud-storage-message');
       message.classList.remove('hidden');
-      message.innerHTML = `Ads and affiliate links removed! Your code is: <strong>${code}</strong>. Save this code to use on other browsers or devices.`;
-      alert('Ads and affiliate links removed! (Simulated $5 purchase. Add Stripe: https://stripe.com/docs/payments)');
+      message.innerHTML = `Cloud storage enabled! Your code is: <strong>${code}</strong>. Save this code to use on other devices. Now enter your GitHub Personal Access Token to enable sync.`;
+      alert('Cloud storage enabled! (Simulated $5 purchase. Add Stripe: https://stripe.com/docs/payments)');
+      syncToCloud(); // Sync the payment status to the database
     }
 
-    function applyAdRemovalCode() {
-      const inputCode = document.getElementById('ad-removal-code').value.trim();
-      const message = document.getElementById('ad-removal-message');
-      if (inputCode === adRemovalCode) {
-        isAdFree = true;
-        localStorage.setItem('mediatracked_adRemovalCode', inputCode);
-        updateAdVisibility();
+    function applyCloudStorageCode() {
+      const inputCode = document.getElementById('cloud-storage-code').value.trim();
+      const message = document.getElementById('cloud-storage-message');
+      if (inputCode === cloudStorageCode) {
+        isCloudStorageEnabled = true;
+        localStorage.setItem('mediatracked_cloudStorageCode', inputCode);
+        updateCloudStorageVisibility();
         message.classList.remove('hidden');
-        message.innerHTML = 'Code applied! Ads and affiliate links removed.';
+        message.innerHTML = 'Code applied! Cloud storage enabled. Now enter your GitHub Personal Access Token to enable sync.';
+        syncToCloud(); // Sync the payment status to the database
       } else {
         message.classList.remove('hidden');
-        message.innerHTML = 'Invalid code. Please try again or purchase ad removal.';
+        message.innerHTML = 'Invalid code. Please try again or purchase cloud storage.';
       }
     }
 
@@ -247,6 +273,40 @@
       const type = document.getElementById('type').value;
       const statusSelect = document.getElementById('status');
       statusSelect.innerHTML = statusOptions[type].map(status => `<option value="${status}">${status}</option>`).join('');
+    }
+
+    // Simplified Amazon PA-API request (signature generation needs a backend proxy in production)
+    async function fetchAmazonData(keywords, searchIndex, operation = 'SearchItems') {
+      const timestamp = new Date().toISOString().replace(/[:\-]|\.\d{3}/g, '');
+      const params = {
+        Service: 'AWSECommerceService',
+        Operation: operation,
+        AWSAccessKeyId: AMAZON_ACCESS_KEY,
+        AssociateTag: AMAZON_AFFILIATE_TAG,
+        SearchIndex: searchIndex,
+        Keywords: keywords,
+        ItemCount: 5,
+        ResponseGroup: 'ItemAttributes,Offers',
+        Timestamp: timestamp
+      };
+
+      // In production, you need to generate a signature using AMAZON_SECRET_KEY (HMAC-SHA256)
+      // For now, we'll mock the request URL (use a backend proxy to sign requests)
+      const queryString = Object.keys(params)
+        .sort()
+        .map(key => `${key}=${encodeURIComponent(params[key])}`)
+        .join('&');
+      const url = `https://webservices.amazon.com/paapi5/${operation.toLowerCase()}?${queryString}&Signature=TO_BE_GENERATED`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network error');
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('Amazon PA-API error:', error);
+        return null;
+      }
     }
 
     async function fetchAutocomplete() {
@@ -265,90 +325,28 @@
       loadingIndicator.classList.remove('hidden');
       autocompleteList.classList.add('hidden');
 
+      const searchIndex = {
+        Book: 'Books',
+        Audiobook: 'Books', // Filter for audiobooks later
+        Movie: 'Movies',
+        'TV Show': 'Movies', // Amazon groups TV shows under Movies
+        Game: 'VideoGames'
+      }[type];
+
+      const data = await fetchAmazonData(titleInput, searchIndex);
       let results = [];
 
-      // Use Google Books for Books and Audiobooks
-      if (type === 'Book' || type === 'Audiobook') {
-        try {
-          const url = type === 'Book'
-            ? `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(titleInput)}&maxResults=5`
-            : `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(titleInput)}+inaudiobook&maxResults=5`;
-          const response = await fetch(url);
-          if (!response.ok) throw new Error('Network error');
-          const data = await response.json();
-          results = data.items.map(item => ({
-            title: item.volumeInfo.title,
-            year: item.volumeInfo.publishedDate?.split('-')[0] || ''
-          }));
-        } catch (error) {
-          console.error('Google Books error:', error);
-          results = [{ title: navigator.onLine ? 'Error fetching data' : 'Offline? Enter manually', year: '' }];
-        }
+      if (data && data.ItemsResult && data.ItemsResult.Items) {
+        results = data.ItemsResult.Items.map(item => {
+          const isAudiobook = type === 'Audiobook' && item.ItemInfo.Classifications.ProductGroup.DisplayValue.toLowerCase().includes('audiobook');
+          if (type === 'Audiobook' && !isAudiobook) return null;
+          return {
+            title: item.ItemInfo.Title.DisplayValue,
+            year: item.ItemInfo.ContentInfo?.PublicationDate?.DisplayValue?.split('-')[0] || ''
+          };
+        }).filter(item => item);
       } else {
-        // Use Wikidata for Movies, TV Shows, and Games
-        try {
-          let sparqlQuery;
-          if (type === 'Book') {
-            sparqlQuery = `
-              SELECT ?book ?bookLabel ?publicationDate WHERE {
-                ?book wdt:P31 wd:Q571.
-                ?book rdfs:label ?bookLabel.
-                FILTER(LANG(?bookLabel) = "en")
-                FILTER(CONTAINS(LCASE(?bookLabel), "${titleInput.toLowerCase()}"))
-                OPTIONAL { ?book wdt:P577 ?publicationDate. }
-              }
-              LIMIT 5
-            `;
-          } else if (type === 'Movie') {
-            sparqlQuery = `
-              SELECT ?movie ?movieLabel ?releaseDate WHERE {
-                ?movie wdt:P31 wd:Q11424.
-                ?movie rdfs:label ?movieLabel.
-                FILTER(LANG(?movieLabel) = "en")
-                FILTER(CONTAINS(LCASE(?movieLabel), "${titleInput.toLowerCase()}"))
-                OPTIONAL { ?movie wdt:P577 ?releaseDate. }
-              }
-              LIMIT 5
-            `;
-          } else if (type === 'TV Show') {
-            sparqlQuery = `
-              SELECT ?tvShow ?tvShowLabel ?releaseDate WHERE {
-                ?tvShow wdt:P31 wd:Q5398426.
-                ?tvShow rdfs:label ?tvShowLabel.
-                FILTER(LANG(?tvShowLabel) = "en")
-                FILTER(CONTAINS(LCASE(?tvShowLabel), "${titleInput.toLowerCase()}"))
-                OPTIONAL { ?tvShow wdt:P577 ?releaseDate. }
-              }
-              LIMIT 5
-            `;
-          } else if (type === 'Game') {
-            sparqlQuery = `
-              SELECT ?game ?gameLabel ?releaseDate WHERE {
-                ?game wdt:P31 wd:Q7889.
-                ?game rdfs:label ?gameLabel.
-                FILTER(LANG(?gameLabel) = "en")
-                FILTER(CONTAINS(LCASE(?gameLabel), "${titleInput.toLowerCase()}"))
-                OPTIONAL { ?game wdt:P577 ?releaseDate. }
-              }
-              LIMIT 5
-            `;
-          }
-
-          if (sparqlQuery) {
-            const response = await fetch('https://query.wikidata.org/sparql?query=' + encodeURIComponent(sparqlQuery), {
-              headers: { 'Accept': 'application/sparql-results+json' }
-            });
-            if (!response.ok) throw new Error('Network error');
-            const data = await response.json();
-            results = data.results.bindings.map(item => ({
-              title: item[type === 'Game' ? 'gameLabel' : type === 'TV Show' ? 'tvShowLabel' : type === 'Movie' ? 'movieLabel' : 'bookLabel'].value,
-              year: item.releaseDate ? item.releaseDate.value.split('-')[0] : (item.publicationDate ? item.publicationDate.value.split('-')[0] : '')
-            }));
-          }
-        } catch (error) {
-          console.error('Wikidata error:', error);
-          results = [{ title: navigator.onLine ? 'Error fetching data' : 'Offline? Enter manually', year: '' }];
-        }
+        results = [{ title: navigator.onLine ? 'Error fetching data' : 'Offline? Enter manually', year: '' }];
       }
 
       loadingIndicator.classList.add('hidden');
@@ -414,28 +412,233 @@
       fetchSuggestions();
     }
 
-    function updateAdVisibility() {
-      const adBanner = document.getElementById('ad-banner');
-      const adSettings = document.getElementById('ad-settings');
-      const affiliateLinks = document.getElementById('affiliate-links');
-      const suggestionsSection = document.getElementById('suggestions');
-      const adPlaceholder = document.getElementById('ad-placeholder');
-      const enterCodeSection = document.getElementById('enter-code-section');
+    function updateCloudStorageVisibility() {
+      const enterCloudCodeSection = document.getElementById('enter-cloud-code-section');
+      const cloudSyncSection = document.getElementById('cloud-sync-section');
+      const githubPATInput = document.getElementById('github-pat');
+      const savePATButton = document.getElementById('save-pat-button');
 
-      if (isAdFree) {
-        adBanner.style.display = 'none';
-        adSettings.style.display = 'none';
-        affiliateLinks.style.display = 'none';
-        suggestionsSection.style.display = 'none';
-        enterCodeSection.classList.add('hidden');
+      if (isCloudStorageEnabled) {
+        enterCloudCodeSection.classList.add('hidden');
+        cloudSyncSection.classList.remove('hidden');
+        if (!githubPAT) {
+          githubPATInput.classList.remove('hidden');
+          savePATButton.classList.remove('hidden');
+        }
+        document.getElementById('cloud-sync-enabled').checked = isCloudSyncEnabled;
       } else {
-        adBanner.style.display = 'block';
-        adSettings.style.display = 'block';
-        affiliateLinks.style.display = 'block';
-        suggestionsSection.style.display = 'block';
-        adPlaceholder.classList.remove('hidden');
-        setTimeout(() => adPlaceholder.classList.add('hidden'), 3000);
-        enterCodeSection.classList.remove('hidden');
+        enterCloudCodeSection.classList.remove('hidden');
+        cloudSyncSection.classList.add('hidden');
+        githubPATInput.classList.add('hidden');
+        savePATButton.classList.add('hidden');
+      }
+    }
+
+    function toggleCloudSync() {
+      isCloudSyncEnabled = document.getElementById('cloud-sync-enabled').checked;
+      localStorage.setItem('mediatracked_cloudSyncEnabled', isCloudSyncEnabled);
+      if (isCloudSyncEnabled) {
+        syncToCloud();
+      }
+    }
+
+    function saveGitHubPAT() {
+      githubPAT = document.getElementById('github-pat').value.trim();
+      if (!githubPAT) {
+        alert('Please enter a valid GitHub Personal Access Token.');
+        return;
+      }
+      localStorage.setItem('mediatracked_githubPAT', githubPAT);
+      document.getElementById('github-pat').classList.add('hidden');
+      document.getElementById('save-pat-button').classList.add('hidden');
+      syncToCloud(); // Sync the PAT to the database
+    }
+
+    async function syncToCloud() {
+      if (!isCloudSyncEnabled || !githubPAT) {
+        const syncStatus = document.getElementById('sync-status');
+        syncStatus.textContent = 'Sync disabled or no PAT provided.';
+        return;
+      }
+
+      const syncStatus = document.getElementById('sync-status');
+      syncStatus.textContent = 'Checking payment status...';
+
+      try {
+        const SQL = await initSQLite();
+
+        // Load the database
+        if (!db) {
+          const response = await fetch(`https://api.github.com/repos/yourusername/mediatracked-user-data/contents/mediatracked.db`, {
+            headers: {
+              'Authorization': `token ${githubPAT}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          });
+
+          if (response.ok) {
+            const fileData = await response.json();
+            const binaryString = atob(fileData.content);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            db = new SQL.Database(bytes);
+          } else {
+            db = new SQL.Database();
+            db.run(`
+              CREATE TABLE IF NOT EXISTS user_data (
+                user_id TEXT PRIMARY KEY,
+                media TEXT,
+                suggestions_cache TEXT,
+                has_paid_cloud_storage INTEGER DEFAULT 0,
+                media_types TEXT,
+                github_pat TEXT
+              );
+            `);
+          }
+        }
+
+        // Check payment status directly from the database
+        const stmt = db.prepare('SELECT has_paid_cloud_storage FROM user_data WHERE user_id = ?');
+        stmt.bind([userId]);
+        let hasPaid = 0;
+        if (stmt.step()) {
+          const row = stmt.getAsObject();
+          hasPaid = row.has_paid_cloud_storage || 0;
+        }
+        stmt.free();
+
+        if (!hasPaid) {
+          isCloudStorageEnabled = false;
+          isCloudSyncEnabled = false;
+          localStorage.setItem('mediatracked_cloudSyncEnabled', 'false');
+          updateCloudStorageVisibility();
+          syncStatus.textContent = 'Access denied: Please purchase cloud storage to sync.';
+          return;
+        }
+
+        syncStatus.textContent = 'Syncing to cloud...';
+
+        // Encrypt data before storing
+        const encryptedMedia = CryptoJS.AES.encrypt(JSON.stringify(media), ENCRYPTION_KEY).toString();
+        const encryptedSuggestionsCache = CryptoJS.AES.encrypt(JSON.stringify(suggestionsCache), ENCRYPTION_KEY).toString();
+        const encryptedPAT = CryptoJS.AES.encrypt(githubPAT, ENCRYPTION_KEY).toString();
+        const mediaTypes = calculateMediaTypes();
+
+        // Insert or update user data
+        db.run(`
+          INSERT OR REPLACE INTO user_data (user_id, media, suggestions_cache, has_paid_cloud_storage, media_types, github_pat)
+          VALUES (?, ?, ?, ?, ?, ?);
+        `, [userId, encryptedMedia, encryptedSuggestionsCache, isCloudStorageEnabled ? 1 : 0, mediaTypes, encryptedPAT]);
+
+        // Export the database as a binary array
+        const binaryArray = db.export();
+        const base64Data = btoa(String.fromCharCode(...binaryArray));
+
+        // Check if the file exists to get its SHA
+        let sha = '';
+        try {
+          const getFileResponse = await fetch(`https://api.github.com/repos/yourusername/mediatracked-user-data/contents/mediatracked.db`, {
+            headers: {
+              'Authorization': `token ${githubPAT}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          });
+          if (getFileResponse.ok) {
+            const fileData = await getFileResponse.json();
+            sha = fileData.sha;
+          }
+        } catch (error) {
+          // File doesn't exist, proceed to create it
+        }
+
+        // Write the updated database to GitHub
+        const response = await fetch(`https://api.github.com/repos/yourusername/mediatracked-user-data/contents/mediatracked.db`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `token ${githubPAT}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: `Update database`,
+            content: base64Data,
+            sha: sha || undefined
+          })
+        });
+
+        if (response.ok) {
+          syncStatus.textContent = 'Successfully synced to cloud!';
+        } else {
+          throw new Error('Failed to sync');
+        }
+      } catch (error) {
+        console.error('Cloud sync error:', error);
+        syncStatus.textContent = 'Failed to sync to cloud. Check your PAT and connection.';
+      }
+    }
+
+    async function loadFromCloud() {
+      if (!githubPAT) {
+        const syncStatus = document.getElementById('sync-status');
+        syncStatus.textContent = 'Please enter your GitHub PAT to load data.';
+        return;
+      }
+
+      const syncStatus = document.getElementById('sync-status');
+      syncStatus.textContent = 'Loading from cloud...';
+
+      try {
+        const SQL = await initSQLite();
+
+        const response = await fetch(`https://api.github.com/repos/yourusername/mediatracked-user-data/contents/mediatracked.db`, {
+          headers: {
+            'Authorization': `token ${githubPAT}`,
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        });
+
+        if (response.ok) {
+          const fileData = await response.json();
+          const binaryString = atob(fileData.content);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          db = new SQL.Database(bytes);
+
+          // Query the user's data
+          const stmt = db.prepare('SELECT media, suggestions_cache, has_paid_cloud_storage, github_pat FROM user_data WHERE user_id = ?');
+          stmt.bind([userId]);
+          if (stmt.step()) {
+            const row = stmt.getAsObject();
+            const decryptedMedia = CryptoJS.AES.decrypt(row.media, ENCRYPTION_KEY).toString(CryptoJS.enc.Utf8);
+            const decryptedSuggestionsCache = CryptoJS.AES.decrypt(row.suggestions_cache, ENCRYPTION_KEY).toString(CryptoJS.enc.Utf8);
+            const decryptedPAT = row.github_pat ? CryptoJS.AES.decrypt(row.github_pat, ENCRYPTION_KEY).toString(CryptoJS.enc.Utf8) : '';
+            media = JSON.parse(decryptedMedia) || [];
+            suggestionsCache = JSON.parse(decryptedSuggestionsCache) || {};
+            isCloudStorageEnabled = row.has_paid_cloud_storage === 1;
+            if (decryptedPAT && !githubPAT) {
+              githubPAT = decryptedPAT;
+              localStorage.setItem('mediatracked_githubPAT', githubPAT);
+            }
+            localStorage.setItem('mediatracked_media', JSON.stringify(media));
+            localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+            updateCloudStorageVisibility();
+            syncStatus.textContent = 'Successfully loaded from cloud!';
+            renderMedia();
+            fetchSuggestions();
+          } else {
+            syncStatus.textContent = 'No cloud data found for this user.';
+          }
+          stmt.free();
+        } else {
+          throw new Error('Failed to load');
+        }
+      } catch (error) {
+        console.error('Cloud load error:', error);
+        syncStatus.textContent = 'Failed to load from cloud. Check your PAT and connection.';
       }
     }
 
@@ -468,119 +671,61 @@
         }
 
         let relatedItems = [];
+        const searchIndex = {
+          Book: 'Books',
+          Audiobook: 'Books',
+          Movie: 'Movies',
+          'TV Show': 'Movies',
+          Game: 'VideoGames'
+        }[item.type];
 
-        // Use Google Books for Books and Audiobooks
+        // First, search for the item to get its metadata (e.g., author, genre)
+        const searchData = await fetchAmazonData(item.title, searchIndex);
+        if (!searchData || !searchData.ItemsResult || !searchData.ItemsResult.Items) {
+          continue;
+        }
+
+        const foundItem = searchData.ItemsResult.Items[0];
+        if (!foundItem) continue;
+
+        // For Books/Audiobooks: Search by author
         if (item.type === 'Book' || item.type === 'Audiobook') {
-          try {
-            const searchResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(item.title)}&maxResults=1`);
-            if (!searchResponse.ok) throw new Error('Network error');
-            const searchData = await searchResponse.json();
-            const book = searchData.items[0];
-            if (book && book.volumeInfo.authors) {
-              const author = book.volumeInfo.authors[0];
-              const authorResponse = await fetch(`https://www.googleapis.com/books/v1/volumes?q=inauthor:${encodeURIComponent(author)}&maxResults=3`);
-              if (!authorResponse.ok) throw new Error('Network error');
-              const authorData = await authorResponse.json();
-              relatedItems = authorData.items
-                .filter(d => d.volumeInfo.title !== item.title)
+          const author = foundItem.ItemInfo.ByLineInfo?.Contributors?.find(c => c.Role === 'Author')?.Name;
+          if (author) {
+            const authorData = await fetchAmazonData(`inauthor:${author}`, 'Books');
+            if (authorData && authorData.ItemsResult && authorData.ItemsResult.Items) {
+              relatedItems = authorData.ItemsResult.Items
+                .filter(d => d.ItemInfo.Title.DisplayValue !== item.title)
+                .map(d => {
+                  const isAudiobook = d.ItemInfo.Classifications.ProductGroup.DisplayValue.toLowerCase().includes('audiobook');
+                  if (item.type === 'Audiobook' && !isAudiobook) return null;
+                  if (item.type === 'Book' && isAudiobook) return null;
+                  return {
+                    title: d.ItemInfo.Title.DisplayValue,
+                    type: item.type,
+                    status: statusOptions[item.type][0],
+                    source: `Based on ${item.title} by ${author}`
+                  };
+                })
+                .filter(d => d);
+            }
+          }
+        }
+        // For Movies/TV Shows/Games: Search by genre
+        else {
+          const genre = foundItem.ItemInfo.Classifications?.Genre?.DisplayValue || '';
+          if (genre) {
+            const genreData = await fetchAmazonData(genre, searchIndex);
+            if (genreData && genreData.ItemsResult && genreData.ItemsResult.Items) {
+              relatedItems = genreData.ItemsResult.Items
+                .filter(d => d.ItemInfo.Title.DisplayValue !== item.title)
                 .map(d => ({
-                  title: d.volumeInfo.title,
+                  title: d.ItemInfo.Title.DisplayValue,
                   type: item.type,
                   status: statusOptions[item.type][0],
-                  source: `Based on ${item.title} by ${author}`
+                  source: `Similar to ${item.title}`
                 }));
             }
-          } catch (error) {
-            console.error('Suggestions error:', error);
-            relatedItems = [];
-          }
-        } else {
-          // Use Wikidata for Movies, TV Shows, and Games
-          try {
-            let sparqlQuery;
-            if (item.type === 'Book') {
-              sparqlQuery = `
-                SELECT ?book ?bookLabel ?authorLabel WHERE {
-                  ?book wdt:P31 wd:Q571.
-                  ?book wdt:P50 ?author.
-                  ?otherBook wdt:P31 wd:Q571.
-                  ?otherBook wdt:P50 ?author.
-                  ?otherBook rdfs:label ?bookLabel.
-                  FILTER(LANG(?bookLabel) = "en")
-                  ?book rdfs:label ?itemLabel.
-                  FILTER(?itemLabel = "${item.title}"@en)
-                  FILTER(?book != ?otherBook)
-                  ?author rdfs:label ?authorLabel.
-                  FILTER(LANG(?authorLabel) = "en")
-                }
-                LIMIT 3
-              `;
-            } else if (item.type === 'Movie') {
-              sparqlQuery = `
-                SELECT ?movie ?movieLabel ?releaseDate WHERE {
-                  ?movie wdt:P31 wd:Q11424.
-                  ?movie wdt:P136 ?genre.
-                  ?otherMovie wdt:P31 wd:Q11424.
-                  ?otherMovie wdt:P136 ?genre.
-                  ?otherMovie rdfs:label ?movieLabel.
-                  FILTER(LANG(?movieLabel) = "en")
-                  ?movie rdfs:label ?itemLabel.
-                  FILTER(?itemLabel = "${item.title}"@en)
-                  FILTER(?movie != ?otherMovie)
-                  OPTIONAL { ?otherMovie wdt:P577 ?releaseDate. }
-                }
-                LIMIT 3
-              `;
-            } else if (item.type === 'TV Show') {
-              sparqlQuery = `
-                SELECT ?tvShow ?tvShowLabel ?releaseDate WHERE {
-                  ?tvShow wdt:P31 wd:Q5398426.
-                  ?tvShow wdt:P136 ?genre.
-                  ?otherShow wdt:P31 wd:Q5398426.
-                  ?otherShow wdt:P136 ?genre.
-                  ?otherShow rdfs:label ?tvShowLabel.
-                  FILTER(LANG(?tvShowLabel) = "en")
-                  ?tvShow rdfs:label ?itemLabel.
-                  FILTER(?itemLabel = "${item.title}"@en)
-                  FILTER(?tvShow != ?otherShow)
-                  OPTIONAL { ?otherShow wdt:P577 ?releaseDate. }
-                }
-                LIMIT 3
-              `;
-            } else if (item.type === 'Game') {
-              sparqlQuery = `
-                SELECT ?game ?gameLabel ?releaseDate WHERE {
-                  ?game wdt:P31 wd:Q7889.
-                  ?game wdt:P136 ?genre.
-                  ?otherGame wdt:P31 wd:Q7889.
-                  ?otherGame wdt:P136 ?genre.
-                  ?otherGame rdfs:label ?gameLabel.
-                  FILTER(LANG(?gameLabel) = "en")
-                  ?game rdfs:label ?itemLabel.
-                  FILTER(?itemLabel = "${item.title}"@en)
-                  FILTER(?game != ?otherGame)
-                  OPTIONAL { ?otherGame wdt:P577 ?releaseDate. }
-                }
-                LIMIT 3
-              `;
-            }
-
-            if (sparqlQuery) {
-              const response = await fetch('https://query.wikidata.org/sparql?query=' + encodeURIComponent(sparqlQuery), {
-                headers: { 'Accept': 'application/sparql-results+json' }
-              });
-              if (!response.ok) throw new Error('Network error');
-              const data = await response.json();
-              relatedItems = data.results.bindings.map(d => ({
-                title: d[item.type === 'Game' ? 'gameLabel' : item.type === 'TV Show' ? 'tvShowLabel' : item.type === 'Movie' ? 'movieLabel' : 'bookLabel'].value,
-                type: item.type,
-                status: statusOptions[item.type][0],
-                source: `Similar to ${item.title}`
-              }));
-            }
-          } catch (error) {
-            console.error('Suggestions error:', error);
-            relatedItems = [];
           }
         }
 
@@ -716,12 +861,15 @@
         <a href="${link.url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline text-sm">${sanitizeInput(link.text)}</a>
       `).join('');
 
-      updateAdVisibility();
       fetchSuggestions();
     }
 
     // Initialize
     updateStatusOptions();
+    updateCloudStorageVisibility();
+    if (isCloudSyncEnabled && githubPAT) {
+      loadFromCloud();
+    }
     renderMedia();
     fetchSuggestions();
 
