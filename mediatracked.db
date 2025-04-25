@@ -1,0 +1,8 @@
+CREATE TABLE user_data (
+    user_id TEXT PRIMARY KEY,
+    media TEXT,
+    suggestions_cache TEXT,
+    has_paid_cloud_storage INTEGER DEFAULT 0,
+    media_types TEXT,
+    github_pat TEXT
+);
