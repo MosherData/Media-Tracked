@@ -1,7 +1,7 @@
 {
   "name": "MediaTracked",
   "short_name": "MediaTracked",
-  "description": "Track books, audiobooks, movies, TV shows, and games privately and offline with MediaTracked.",
+  "description": "Track books, audiobooks, movies, TV shows, and games privately and offline.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f3f4f6",
