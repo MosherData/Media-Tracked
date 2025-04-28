@@ -12,7 +12,6 @@
   <link rel="apple-touch-icon" href="/icon.png">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous">
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body class="min-h-screen bg-gray-200 font-sans antialiased">
@@ -146,9 +145,6 @@
     let dbUserId = null;
 
     const CLIENT_ID = '1099263612427-lg5p8n7ssb3ed7936on9u2qhu7rrtin9.apps.googleusercontent.com';
-    const API_KEY = 'YOUR_GOOGLE_API_KEY';
-    const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
     const BACKEND_URL = 'https://mediatracked-backend.vercel.app';
 
     const statusOptions = {
@@ -182,10 +178,6 @@
       ]
     };
 
-    const AMAZON_AFFILIATE_TAG = 'YOUR_AMAZON_TAG';
-    const AMAZON_ACCESS_KEY = 'YOUR_ACCESS_KEY';
-    const AMAZON_SECRET_KEY = 'YOUR_SECRET_KEY';
-
     let suggestionsCache = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
 
     function generateUserId() {
@@ -205,99 +197,48 @@
     }
 
     function initGoogleClient() {
-      gapi.load('client:auth2', () => {
-        gapi.client.init({
-          apiKey: API_KEY,
-          clientId: CLIENT_ID,
-          discoveryDocs: DISCOVERY_DOCS,
-          scope: SCOPES
-        }).then(() => {
-          google.accounts.id.initialize({
-            client_id: CLIENT_ID,
-            callback: handleCredentialResponse
-          });
-          google.accounts.id.renderButton(
-            document.getElementById('google-signin-button'),
-            { theme: 'outline', size: 'medium' }
-          );
-        }).catch(error => {
-          console.error('Google API init error:', error);
-          document.getElementById('sync-status').textContent = 'Failed to initialize Google API.';
-        });
+      google.accounts.id.initialize({
+        client_id: CLIENT_ID,
+        callback: handleCredentialResponse
       });
+      google.accounts.id.renderButton(
+        document.getElementById('google-signin-button'),
+        { theme: 'outline', size: 'medium' }
+      );
     }
 
     async function handleCredentialResponse(response) {
       const profile = jwt_decode(response.credential);
       googleUserEmail = profile.email;
+      googleAccessToken = response.credential; // Use the ID token directly
       localStorage.setItem('mediatracked_googleUserEmail', googleUserEmail);
+      localStorage.setItem('mediatracked_googleAccessToken', googleAccessToken);
+      updateCloudSyncVisibility();
+      document.getElementById('google-user-email').classList.remove('hidden');
+      document.getElementById('google-user-email').textContent = `Signed in as: ${googleUserEmail}`;
+      document.getElementById('google-signin-button').classList.add('hidden');
+      document.getElementById('google-signout-button').classList.remove('hidden');
 
-      gapi.auth2.getAuthInstance().signIn().then(() => {
-        googleAccessToken = gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
-        localStorage.setItem('mediatracked_googleAccessToken', googleAccessToken);
-        updateCloudSyncVisibility();
-        document.getElementById('google-user-email').classList.remove('hidden');
-        document.getElementById('google-user-email').textContent = `Signed in as: ${googleUserEmail}`;
-        document.getElementById('google-signin-button').classList.add('hidden');
-        document.getElementById('google-signout-button').classList.remove('hidden');
-
-        updateUserInDatabase();
-        if (isCloudSyncEnabled) {
-          syncToCloud();
-        }
-      }).catch(error => {
-        console.error('Google Sign-In error:', error);
-        document.getElementById('sync-status').textContent = 'Failed to sign in with Google.';
-      });
-    }
-
-    async function updateUserInDatabase() {
-      let retries = 3;
-      dbUserId = generateDbUserId(); // Generate ID in the app
-      while (retries > 0) {
-        try {
-          const response = await fetch(`${BACKEND_URL}/api/users`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: dbUserId,
-              user_id: userId,
-              email: googleUserEmail
-            })
-          });
-
-          if (!response.ok) throw new Error('Failed to update user');
-          localStorage.setItem('mediatracked_dbUserId', dbUserId);
-          return;
-        } catch (error) {
-          console.error('User update error:', error);
-          retries--;
-          if (retries === 0) {
-            document.getElementById('sync-status').textContent = 'Failed to update user in database. Please try again.';
-            return;
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+      updateUserInDatabase();
+      if (isCloudSyncEnabled) {
+        syncToCloud();
       }
     }
 
     function signOut() {
-      if (gapi.auth2) {
-        const auth2 = gapi.auth2.getAuthInstance();
-        auth2.signOut().then(() => {
-          googleAccessToken = null;
-          googleUserEmail = null;
-          dbUserId = null;
-          localStorage.removeItem('mediatracked_googleAccessToken');
-          localStorage.removeItem('mediatracked_googleUserEmail');
-          localStorage.removeItem('mediatracked_dbUserId');
-          document.getElementById('google-user-email').classList.add('hidden');
-          document.getElementById('google-signin-button').classList.remove('hidden');
-          document.getElementById('google-signout-button').classList.add('hidden');
-          document.getElementById('sync-status').textContent = 'Signed out from Google.';
-          updateCloudSyncVisibility();
-        });
-      }
+      google.accounts.id.revoke(googleUserEmail, () => {
+        googleAccessToken = null;
+        googleUserEmail = null;
+        dbUserId = null;
+        localStorage.removeItem('mediatracked_googleAccessToken');
+        localStorage.removeItem('mediatracked_googleUserEmail');
+        localStorage.removeItem('mediatracked_dbUserId');
+        document.getElementById('google-user-email').classList.add('hidden');
+        document.getElementById('google-signin-button').classList.remove('hidden');
+        document.getElementById('google-signout-button').classList.add('hidden');
+        document.getElementById('sync-status').textContent = 'Signed out from Google.';
+        updateCloudSyncVisibility();
+      });
     }
 
     function jwt_decode(token) {
@@ -338,27 +279,16 @@
     }
 
     async function fetchAmazonData(keywords, searchIndex, operation = 'SearchItems') {
-      const timestamp = new Date().toISOString().replace(/[:\-]|\.\d{3}/g, '');
-      const params = {
-        Service: 'AWSECommerceService',
-        Operation: operation,
-        AWSAccessKeyId: AMAZON_ACCESS_KEY,
-        AssociateTag: AMAZON_AFFILIATE_TAG,
-        SearchIndex: searchIndex,
-        Keywords: keywords,
-        ItemCount: 5,
-        ResponseGroup: 'ItemAttributes,Offers',
-        Timestamp: timestamp
-      };
-
-      const queryString = Object.keys(params)
-        .sort()
-        .map(key => `${key}=${encodeURIComponent(params[key])}`)
-        .join('&');
-      const url = `https://webservices.amazon.com/paapi5/${operation.toLowerCase()}?${queryString}&Signature=TO_BE_GENERATED`;
-
       try {
-        const response = await fetch(url);
+        const response = await fetch(`${BACKEND_URL}/api/amazon`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${googleAccessToken}`
+          },
+          body: JSON.stringify({ keywords, searchIndex, operation })
+        });
+
         if (!response.ok) throw new Error('Network error');
         const data = await response.json();
         return data;
@@ -515,7 +445,10 @@
 
         const response = await fetch(`${BACKEND_URL}/api/sync`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${googleAccessToken}`
+          },
           body: JSON.stringify({
             user_id: dbUserId,
             media: media,
@@ -543,7 +476,11 @@
       syncStatus.textContent = 'Loading from cloud...';
 
       try {
-        const response = await fetch(`${BACKEND_URL}/api/load?user_id=${dbUserId}`);
+        const response = await fetch(`${BACKEND_URL}/api/load?user_id=${dbUserId}`, {
+          headers: {
+            'Authorization': `Bearer ${googleAccessToken}`
+          }
+        });
         if (!response.ok) throw new Error('Failed to load');
         const data = await response.json();
 
@@ -576,7 +513,7 @@
 
     function generateAffiliateLink(title, type) {
       const searchTerm = encodeURIComponent(`${title} ${type.toLowerCase()}`);
-      return `https://www.amazon.com/s?k=${searchTerm}&tag=${AMAZON_AFFILIATE_TAG}`;
+      return `https://www.amazon.com/s?k=${searchTerm}&tag=your-affiliate-tag`; // Replace with your actual affiliate tag
     }
 
     async function fetchSuggestions() {
@@ -691,6 +628,39 @@
               </div>
             </div>
           `).join('');
+    }
+
+    async function updateUserInDatabase() {
+      let retries = 3;
+      dbUserId = generateDbUserId(); // Generate ID in the app
+      while (retries > 0) {
+        try {
+          const response = await fetch(`${BACKEND_URL}/api/users`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${googleAccessToken}`
+            },
+            body: JSON.stringify({
+              id: dbUserId,
+              user_id: userId,
+              email: googleUserEmail
+            })
+          });
+
+          if (!response.ok) throw new Error('Failed to update user');
+          localStorage.setItem('mediatracked_dbUserId', dbUserId);
+          return;
+        } catch (error) {
+          console.error('User update error:', error);
+          retries--;
+          if (retries === 0) {
+            document.getElementById('sync-status').textContent = 'Failed to update user in database. Please try again.';
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
     }
 
     function renderMedia() {
