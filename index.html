@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="MediaTracked">
   <meta name="description" content="Track books, audiobooks, movies, TV shows, and games privately and offline with MediaTracked.">
-  <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="/icon.png">
+  <link rel="manifest" href="/Media-Tracked/manifest.json">
+  <link rel="apple-touch-icon" href="/Media-Tracked/icon.png">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://accounts.google.com/gsi/client"></script>
@@ -131,7 +131,7 @@
 
     <footer class="text-center text-gray-600 mt-10">
       <p>© 2025 MediaTracked. All rights reserved.</p>
-      <p><a href="/privacy.html" class="text-blue-500 hover:underline">Privacy Policy</a></p>
+      <p><a href="/Media-Tracked/privacy.html" class="text-blue-500 hover:underline">Privacy Policy</a></p>
     </footer>
   </div>
 
@@ -187,7 +187,7 @@
     }
 
     function generateDbUserId() {
-      return Date.now(); // Simple unique ID based on timestamp
+      return Date.now();
     }
 
     function sanitizeInput(input) {
@@ -209,8 +209,9 @@
 
     async function handleCredentialResponse(response) {
       const profile = jwt_decode(response.credential);
+      console.log('Profile from token:', profile);
       googleUserEmail = profile.email;
-      googleAccessToken = response.credential; // Use the ID token directly
+      googleAccessToken = response.credential;
       localStorage.setItem('mediatracked_googleUserEmail', googleUserEmail);
       localStorage.setItem('mediatracked_googleAccessToken', googleAccessToken);
       updateCloudSyncVisibility();
@@ -513,7 +514,7 @@
 
     function generateAffiliateLink(title, type) {
       const searchTerm = encodeURIComponent(`${title} ${type.toLowerCase()}`);
-      return `https://www.amazon.com/s?k=${searchTerm}&tag=your-affiliate-tag`; // Replace with your actual affiliate tag
+      return `https://www.amazon.com/s?k=${searchTerm}&tag=your-affiliate-tag`;
     }
 
     async function fetchSuggestions() {
@@ -537,7 +538,7 @@
           Movie: 'Movies',
           'TV Show': 'Movies',
           Game: 'VideoGames'
-        }[item.type];
+        }[type];
 
         const searchData = await fetchAmazonData(item.title, searchIndex);
         if (!searchData || !searchData.ItemsResult || !searchData.ItemsResult.Items) {
@@ -632,7 +633,9 @@
 
     async function updateUserInDatabase() {
       let retries = 3;
-      dbUserId = generateDbUserId(); // Generate ID in the app
+      dbUserId = generateDbUserId();
+      console.log('googleAccessToken:', googleAccessToken);
+      console.log('Request body:', { id: dbUserId, user_id: userId, email: googleUserEmail });
       while (retries > 0) {
         try {
           const response = await fetch(`${BACKEND_URL}/api/users`, {
@@ -648,7 +651,10 @@
             })
           });
 
-          if (!response.ok) throw new Error('Failed to update user');
+          if (!response.ok) {
+            const errorBody = await response.json();
+            throw new Error(`Failed to update user: ${response.status} ${JSON.stringify(errorBody)}`);
+          }
           localStorage.setItem('mediatracked_dbUserId', dbUserId);
           return;
         } catch (error) {
@@ -757,7 +763,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(error => {
+        navigator.serviceWorker.register('/Media-Tracked/sw.js', { scope: '/Media-Tracked/' }).catch(error => {
           console.error('Service Worker registration failed:', error);
         });
       });
