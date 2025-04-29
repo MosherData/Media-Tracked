@@ -8,10 +8,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="MediaTracked">
   <meta name="description" content="Track books, audiobooks, movies, TV shows, and games privately and offline with MediaTracked.">
-  <link rel="manifest" href="/Media-Tracked/manifest.json">
-  <link rel="apple-touch-icon" href="/Media-Tracked/icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon.png">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./dist/output.css">
   <script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body class="min-h-screen bg-gray-200 font-sans antialiased">
@@ -131,7 +131,7 @@
 
     <footer class="text-center text-gray-600 mt-10">
       <p>© 2025 MediaTracked. All rights reserved.</p>
-      <p><a href="/Media-Tracked/privacy.html" class="text-blue-500 hover:underline">Privacy Policy</a></p>
+      <p><a href="/privacy.html" class="text-blue-500 hover:underline">Privacy Policy</a></p>
     </footer>
   </div>
 
@@ -444,6 +444,15 @@
       try {
         const mediaTypes = calculateMediaTypes();
 
+        // Sanitize data to ensure it's JSON-serializable
+        const sanitizeForJSON = (obj) => JSON.parse(JSON.stringify(obj, (key, value) =>
+          typeof value === 'function' || value === undefined ? null : value
+        ));
+
+        const sanitizedMedia = sanitizeForJSON(media);
+        const sanitizedSuggestionsCache = sanitizeForJSON(suggestionsCache);
+        const sanitizedMediaTypes = sanitizeForJSON(mediaTypes);
+
         const response = await fetch(`${BACKEND_URL}/api/sync`, {
           method: 'POST',
           headers: {
@@ -452,9 +461,9 @@
           },
           body: JSON.stringify({
             user_id: dbUserId,
-            media: media,
-            suggestions_cache: suggestionsCache,
-            media_types: mediaTypes
+            media: sanitizedMedia,
+            suggestions_cache: sanitizedSuggestionsCache,
+            media_types: sanitizedMediaTypes
           })
         });
 
@@ -488,14 +497,13 @@
         if (data && Object.keys(data).length > 0) {
           media = data.media || [];
           suggestionsCache = data.suggestions_cache || {};
-          localStorage.setItem('mediatracked_media', JSON.stringify(media));
-          localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
-          updateCloudSyncVisibility();
-          syncStatus.textContent = 'Successfully loaded from cloud!';
+          saveMedia();
+          saveSuggestions();
           renderMedia();
           fetchSuggestions();
+          syncStatus.textContent = 'Successfully loaded from cloud!';
         } else {
-          syncStatus.textContent = 'No cloud data found for this user.';
+          syncStatus.textContent = 'No data found in cloud.';
         }
       } catch (error) {
         console.error('Cloud load error:', error);
@@ -503,176 +511,43 @@
       }
     }
 
-    function toggleAffiliateLinks() {
-      isAffiliateCollapsed = !isAffiliateCollapsed;
-      const content = document.getElementById('affiliate-content');
-      const icon = document.getElementById('affiliate-toggle-icon');
-      content.classList.toggle('hidden');
-      icon.classList.toggle('fa-chevron-up');
-      icon.classList.toggle('fa-chevron-down');
-    }
-
-    function generateAffiliateLink(title, type) {
-      const searchTerm = encodeURIComponent(`${title} ${type.toLowerCase()}`);
-      return `https://www.amazon.com/s?k=${searchTerm}&tag=your-affiliate-tag`;
-    }
-
-    async function fetchSuggestions() {
-      const suggestionsList = document.getElementById('suggestions-list');
-      suggestionsList.innerHTML = '<p class="text-gray-500 text-center py-4">Loading suggestions...</p>';
-
-      const recentMedia = media.slice(-3);
-      let suggestions = [];
-
-      for (const item of recentMedia) {
-        const cacheKey = `${item.type}-${item.title}`;
-        if (suggestionsCache[cacheKey]) {
-          suggestions = suggestions.concat(suggestionsCache[cacheKey]);
-          continue;
-        }
-
-        let relatedItems = [];
-        const searchIndex = {
-          Book: 'Books',
-          Audiobook: 'Books',
-          Movie: 'Movies',
-          'TV Show': 'Movies',
-          Game: 'VideoGames'
-        }[type];
-
-        const searchData = await fetchAmazonData(item.title, searchIndex);
-        if (!searchData || !searchData.ItemsResult || !searchData.ItemsResult.Items) {
-          continue;
-        }
-
-        const foundItem = searchData.ItemsResult.Items[0];
-        if (!foundItem) continue;
-
-        if (item.type === 'Book' || item.type === 'Audiobook') {
-          const author = foundItem.ItemInfo.ByLineInfo?.Contributors?.find(c => c.Role === 'Author')?.Name;
-          if (author) {
-            const authorData = await fetchAmazonData(`inauthor:${author}`, 'Books');
-            if (authorData && authorData.ItemsResult && authorData.ItemsResult.Items) {
-              relatedItems = authorData.ItemsResult.Items
-                .filter(d => d.ItemInfo.Title.DisplayValue !== item.title)
-                .map(d => {
-                  const isAudiobook = d.ItemInfo.Classifications.ProductGroup.DisplayValue.toLowerCase().includes('audiobook');
-                  if (item.type === 'Audiobook' && !isAudiobook) return null;
-                  if (item.type === 'Book' && isAudiobook) return null;
-                  return {
-                    title: d.ItemInfo.Title.DisplayValue,
-                    type: item.type,
-                    status: statusOptions[item.type][0],
-                    source: `Based on ${item.title} by ${author}`
-                  };
-                })
-                .filter(d => d);
-            }
-          }
-        } else {
-          const genre = foundItem.ItemInfo.Classifications?.Genre?.DisplayValue || '';
-          if (genre) {
-            const genreData = await fetchAmazonData(genre, searchIndex);
-            if (genreData && genreData.ItemsResult && genreData.ItemsResult.Items) {
-              relatedItems = genreData.ItemsResult.Items
-                .filter(d => d.ItemInfo.Title.DisplayValue !== item.title)
-                .map(d => ({
-                  title: d.ItemInfo.Title.DisplayValue,
-                  type: item.type,
-                  status: statusOptions[item.type][0],
-                  source: `Similar to ${item.title}`
-                }));
-            }
-          }
-        }
-
-        if (relatedItems.length > 0) {
-          suggestionsCache[cacheKey] = relatedItems;
-          suggestions = suggestions.concat(relatedItems);
-        }
+    async function updateUserInDatabase() {
+      if (!googleAccessToken || !googleUserEmail) {
+        console.error('Cannot update user: Not signed in');
+        return;
       }
 
-      saveSuggestions();
+      dbUserId = localStorage.getItem('mediatracked_dbUserId') || generateDbUserId();
+      localStorage.setItem('mediatracked_dbUserId', dbUserId);
 
-      const seenTitles = new Set();
-      suggestions = suggestions.filter(item => {
-        if (seenTitles.has(item.title)) return false;
-        seenTitles.add(item.title);
-        return true;
-      });
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/users`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${googleAccessToken}`
+          },
+          body: JSON.stringify({
+            id: dbUserId,
+            user_id: userId,
+            email: googleUserEmail
+          })
+        });
 
-      suggestions = suggestions.slice(0, 5);
-
-      suggestionsList.innerHTML = suggestions.length === 0
-        ? '<p class="text-gray-500 text-center py-4">No suggestions yet. Add more media to get recommendations!</p>'
-        : suggestions.map(item => `
-            <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-              <div>
-                <h4 class="font-medium text-gray-900 text-lg">${sanitizeInput(item.title)}</h4>
-                <p class="text-sm text-gray-600">${item.type} | ${item.source}</p>
-              </div>
-              <div class="flex gap-4">
-                <button
-                  onclick="addMedia('${sanitizeInput(item.title).replace(/'/g, "\\'")}', '${item.type}', '${item.status}')"
-                  class="text-blue-500 hover:text-blue-600 transition-colors duration-200 text-sm font-medium"
-                >
-                  Add to List
-                </button>
-                <a
-                  href="${generateAffiliateLink(item.title, item.type)}"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-green-500 hover:text-green-600 transition-colors duration-200 text-sm font-medium"
-                >
-                  Buy Now
-                </a>
-              </div>
-            </div>
-          `).join('');
-    }
-
-    async function updateUserInDatabase() {
-      let retries = 3;
-      dbUserId = generateDbUserId();
-      console.log('googleAccessToken:', googleAccessToken);
-      console.log('Request body:', { id: dbUserId, user_id: userId, email: googleUserEmail });
-      while (retries > 0) {
-        try {
-          const response = await fetch(`${BACKEND_URL}/api/users`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${googleAccessToken}`
-            },
-            body: JSON.stringify({
-              id: dbUserId,
-              user_id: userId,
-              email: googleUserEmail
-            })
-          });
-
-          if (!response.ok) {
-            const errorBody = await response.json();
-            throw new Error(`Failed to update user: ${response.status} ${JSON.stringify(errorBody)}`);
-          }
-          localStorage.setItem('mediatracked_dbUserId', dbUserId);
-          return;
-        } catch (error) {
-          console.error('User update error:', error);
-          retries--;
-          if (retries === 0) {
-            document.getElementById('sync-status').textContent = 'Failed to update user in database. Please try again.';
-            return;
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        if (!response.ok) {
+          throw new Error('Failed to update user');
         }
+
+        const data = await response.json();
+        console.log('User updated in database:', data);
+      } catch (error) {
+        console.error('User update error:', error);
       }
     }
 
     function renderMedia() {
-      const filter = document.getElementById('filter').value;
       const mediaList = document.getElementById('media-list');
-      const affiliateList = document.getElementById('affiliate-list');
+      const filter = document.getElementById('filter').value;
 
       const filteredMedia = media.filter(item => {
         if (filter === 'All') return true;
@@ -684,107 +559,128 @@
         return item.status === filter;
       });
 
-      const typeIcons = {
-        Book: 'fa-book',
-        Audiobook: 'fa-headphones',
-        'TV Show': 'fa-tv',
-        Movie: 'fa-film',
-        Game: 'fa-gamepad'
-      };
-
-      const groupedMedia = {};
-      filteredMedia.forEach(item => {
-        if (!groupedMedia[item.type]) {
-          groupedMedia[item.type] = [];
-        }
-        groupedMedia[item.type].push(item);
-      });
-
-      let html = '';
-      const mediaTypes = ['Book', 'Audiobook', 'TV Show', 'Movie', 'Game'];
-      mediaTypes.forEach(type => {
-        if (groupedMedia[type] && groupedMedia[type].length > 0) {
-          html += `
-            <div class="mb-4">
-              <h3 class="text-xl font-semibold text-gray-800 mb-2">${type}s</h3>
-              <div class="space-y-4">
-                ${groupedMedia[type].map(item => `
-                  <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                    <div class="flex items-center gap-4">
-                      <i class="fas ${typeIcons[item.type]} text-blue-500 text-xl"></i>
-                      <div>
-                        <h4 class="font-medium text-gray-900 text-lg">${sanitizeInput(item.title)}</h4>
-                        <p class="text-sm text-gray-600">${item.status}</p>
-                      </div>
-                    </div>
-                    <div class="flex gap-4">
-                      <button
-                        onclick="toggleStatus(${item.id})"
-                        class="text-blue-500 hover:text-blue-600 transition-colors duration-200 text-sm font-medium"
-                        aria-label="Toggle status for ${sanitizeInput(item.title)}"
-                      >
-                        Next Status
-                      </button>
-                      <button
-                        onclick="deleteMedia(${item.id})"
-                        class="text-red-500 hover:text-red-600 transition-colors duration-200"
-                        aria-label="Delete ${sanitizeInput(item.title)}"
-                      >
-                        <i class="fas fa-trash"></i>
-                      </button>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `;
-        }
-      });
-
-      mediaList.innerHTML = html || '<p class="text-gray-500 text-center py-4">Your media list is empty. Add media to start!</p>';
-
-      const filterType = filter === 'All' || statusOptions[filter] ? (media[media.length - 1]?.type || 'Book') : filter.replace('s', '');
-      const links = affiliateLinks[filterType] || affiliateLinks.Book;
-      affiliateList.innerHTML = links.map(link => `
-        <a href="${link.url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline text-sm">${sanitizeInput(link.text)}</a>
-      `).join('');
-
-      fetchSuggestions();
+      mediaList.innerHTML = filteredMedia.length ? filteredMedia.map(item => `
+        <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg shadow-sm">
+          <div>
+            <h3 class="text-lg font-medium text-gray-900">${sanitizeInput(item.title)}</h3>
+            <p class="text-sm text-gray-600">${item.type} • ${item.status}</p>
+          </div>
+          <div class="flex gap-2">
+            <button
+              onclick="toggleStatus(${item.id})"
+              class="text-blue-500 hover:text-blue-600"
+              aria-label="Toggle status for ${sanitizeInput(item.title)}"
+            >
+              <i class="fas fa-sync-alt"></i>
+            </button>
+            <button
+              onclick="deleteMedia(${item.id})"
+              class="text-red-500 hover:text-red-600"
+              aria-label="Delete ${sanitizeInput(item.title)}"
+            >
+              <i class="fas fa-trash-alt"></i>
+            </button>
+          </div>
+        </div>
+      `).join('') : '<p class="text-gray-600 text-center">No media items found.</p>';
     }
 
-    updateStatusOptions();
-    updateCloudSyncVisibility();
-    initGoogleClient();
-    if (isCloudSyncEnabled && googleAccessToken) {
-      loadFromCloud();
-    }
-    renderMedia();
-    fetchSuggestions();
+    async function fetchSuggestions() {
+      const suggestionsList = document.getElementById('suggestions-list');
+      const mediaTypes = calculateMediaTypes();
 
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/Media-Tracked/sw.js', { scope: '/Media-Tracked/' }).catch(error => {
-          console.error('Service Worker registration failed:', error);
-        });
-      });
-    }
+      const typeCounts = Object.entries(mediaTypes).sort((a, b) => b[1] - a[1]);
+      const topType = typeCounts.length ? typeCounts[0][0] : null;
 
-    tailwind.config = {
-      theme: {
-        extend: {
-          animation: {
-            'fade-in': 'fadeIn 0.5s ease-out',
-            'fade-in-delayed': 'fadeIn 0.5s ease-out 0.2s'
-          },
-          keyframes: {
-            fadeIn: {
-              '0%': { opacity: '0', transform: 'translateY(10px)' },
-              '100%': { opacity: '1', transform: 'translateY(0)' }
-            }
-          }
-        }
+      if (!topType || !navigator.onLine) {
+        suggestionsList.innerHTML = '<p class="text-gray-600 text-center">No suggestions available.</p>';
+        document.getElementById('suggestions').classList.add('hidden');
+        return;
       }
-    };
+
+      document.getElementById('suggestions').classList.remove('hidden');
+
+      const searchIndex = {
+        Book: 'Books',
+        Audiobook: 'Books',
+        Movie: 'Movies',
+        'TV Show': 'Movies',
+        Game: 'VideoGames'
+      }[topType];
+
+      if (suggestionsCache[topType]) {
+        renderSuggestions(suggestionsCache[topType]);
+        return;
+      }
+
+      const data = await fetchAmazonData(topType, searchIndex);
+      let suggestions = [];
+
+      if (data && data.ItemsResult && data.ItemsResult.Items) {
+        suggestions = data.ItemsResult.Items.slice(0, 3).map(item => ({
+          title: item.ItemInfo.Title.DisplayValue,
+          type: topType
+        }));
+        suggestionsCache[topType] = suggestions;
+        saveSuggestions();
+      }
+
+      renderSuggestions(suggestions);
+    }
+
+    function renderSuggestions(suggestions) {
+      const suggestionsList = document.getElementById('suggestions-list');
+      suggestionsList.innerHTML = suggestions.length ? suggestions.map(item => `
+        <div class="p-4 bg-gray-50 rounded-lg shadow-sm">
+          <p class="text-gray-800">${sanitizeInput(item.title)} (${item.type})</p>
+          <button
+            onclick="addMedia('${sanitizeInput(item.title).replace(/'/g, "\\'")}', '${item.type}', '${
+              statusOptions[item.type][0]
+            }')"
+            class="text-blue-500 hover:underline mt-1"
+          >
+            Add to your list
+          </button>
+        </div>
+      `).join('') : '<p class="text-gray-600 text-center">No suggestions available.</p>';
+    }
+
+    function toggleAffiliateLinks() {
+      const affiliateContent = document.getElementById('affiliate-content');
+      const toggleIcon = document.getElementById('affiliate-toggle-icon');
+      isAffiliateCollapsed = !isAffiliateCollapsed;
+      affiliateContent.classList.toggle('hidden', isAffiliateCollapsed);
+      toggleIcon.classList.toggle('fa-chevron-up', !isAffiliateCollapsed);
+      toggleIcon.classList.toggle('fa-chevron-down', isAffiliateCollapsed);
+    }
+
+    function renderAffiliateLinks() {
+      const affiliateList = document.getElementById('affiliate-list');
+      const typesPresent = [...new Set(media.map(item => item.type))];
+      const linksToShow = typesPresent.length
+        ? typesPresent.flatMap(type => affiliateLinks[type] || [])
+        : Object.values(affiliateLinks).flat();
+
+      affiliateList.innerHTML = linksToShow.map(link => `
+        <a
+          href="${link.url}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-blue-500 hover:underline"
+        >
+          ${link.text}
+        </a>
+      `).join('');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initGoogleClient();
+      updateCloudSyncVisibility();
+      updateStatusOptions();
+      renderMedia();
+      fetchSuggestions();
+      renderAffiliateLinks();
+    });
   </script>
 </body>
 </html>
