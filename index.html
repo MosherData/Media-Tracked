@@ -24,7 +24,7 @@
     <section id="cloud-sync-settings" class="bg-green-50 p-4 rounded-lg mb-10 text-center animate-fade-in">
       <p class="text-gray-800 mb-2">
         <label class="flex items-center justify-center gap-2">
-          <input id="cloud-sync-enabled" type="checkbox" onchange="toggleCloudSync()" />
+          <input id="cloud-sync-enabled" type="checkbox" />
           Enable Cloud Sync (requires Google login)
         </label>
       </p>
@@ -34,7 +34,7 @@
       <div id="google-signin-section" class="mt-2 hidden">
         <div id="google-signin-button" class="g_id_signin" data-type="standard" data-size="medium" data-theme="outline" data-text="sign_in_with" data-shape="rectangular" data-logo_alignment="left"></div>
         <p id="google-user-email" class="text-sm text-gray-600 mt-2 hidden"></p>
-        <button id="google-signout-button" onclick="signOut()" class="text-red-500 hover:underline font-semibold mt-2 hidden">Sign Out</button>
+        <button id="google-signout-button" class="text-red-500 hover:underline font-semibold mt-2 hidden">Sign Out</button>
       </div>
       <p id="sync-status" class="text-sm text-gray-600 mt-2"></p>
     </section>
@@ -49,14 +49,13 @@
             placeholder="Enter title (e.g., a book or movie)"
             aria-label="Media title"
             class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-colors duration-200"
-            oninput="fetchAutocomplete()"
           />
           <div id="autocomplete-loading" class="absolute right-3 top-3 hidden">
             <i class="fas fa-spinner fa-spin text-gray-400"></i>
           </div>
           <ul id="autocomplete-list" class="absolute z-20 w-full bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto hidden shadow-lg" role="listbox"></ul>
         </div>
-        <select id="type" onchange="updateStatusOptions()" class="p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" aria-label="Media type">
+        <select id="type" class="p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" aria-label="Media type">
           <option value="Book">Book</option>
           <option value="Audiobook">Audiobook</option>
           <option value="TV Show">TV Show</option>
@@ -69,7 +68,7 @@
           <option value="Read">Read</option>
         </select>
         <button
-          onclick="addMedia()"
+          id="add-media-button"
           class="bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition-colors duration-200 text-lg"
         >
           Add Media
@@ -81,7 +80,6 @@
       <h2 class="text-2xl font-semibold text-gray-900 mb-4">Filter</h2>
       <select
         id="filter"
-        onchange="renderMedia()"
         class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
         aria-label="Filter media"
       >
@@ -119,7 +117,7 @@
     <section id="affiliate-links" class="bg-white p-6 rounded-lg shadow-md mb-10 transition-transform duration-300 hover:scale-[1.02]">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-semibold text-gray-900">Explore More</h2>
-        <button onclick="toggleAffiliateLinks()" class="text-blue-500 hover:text-blue-600 text-sm" aria-label="Toggle affiliate links">
+        <button id="toggle-affiliate-button" class="text-blue-500 hover:text-blue-600 text-sm" aria-label="Toggle affiliate links">
           <i id="affiliate-toggle-icon" class="fas fa-chevron-up"></i>
         </button>
       </div>
@@ -750,7 +748,46 @@
       `).join('');
     }
 
+    // Initialize the app and attach event listeners
     document.addEventListener('DOMContentLoaded', () => {
+      // Attach event listeners
+      const cloudSyncCheckbox = document.getElementById('cloud-sync-enabled');
+      const titleInput = document.getElementById('title');
+      const addMediaButton = document.getElementById('add-media-button');
+      const typeSelect = document.getElementById('type');
+      const filterSelect = document.getElementById('filter');
+      const toggleAffiliateButton = document.getElementById('toggle-affiliate-button');
+      const googleSignoutButton = document.getElementById('google-signout-button');
+
+      if (cloudSyncCheckbox) {
+        cloudSyncCheckbox.addEventListener('change', toggleCloudSync);
+      }
+
+      if (titleInput) {
+        titleInput.addEventListener('input', fetchAutocomplete);
+      }
+
+      if (addMediaButton) {
+        addMediaButton.addEventListener('click', () => addMedia());
+      }
+
+      if (typeSelect) {
+        typeSelect.addEventListener('change', updateStatusOptions);
+      }
+
+      if (filterSelect) {
+        filterSelect.addEventListener('change', renderMedia);
+      }
+
+      if (toggleAffiliateButton) {
+        toggleAffiliateButton.addEventListener('click', toggleAffiliateLinks);
+      }
+
+      if (googleSignoutButton) {
+        googleSignoutButton.addEventListener('click', signOut);
+      }
+
+      // Initialize the app
       initGoogleClient();
       updateCloudSyncVisibility();
       updateStatusOptions();
