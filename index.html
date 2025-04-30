@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="MediaTracked">
   <meta name="description" content="Track books, audiobooks, movies, TV shows, and games privately and offline with MediaTracked.">
-  <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="/icon.png">
+  <link rel="manifest" href="/Media-Tracked/manifest.json">
+  <link rel="apple-touch-icon" href="/Media-Tracked/icon.png">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous">
   <link rel="stylesheet" href="./dist/output.css">
   <script src="https://accounts.google.com/gsi/client"></script>
@@ -37,6 +37,7 @@
         <button id="google-signout-button" class="text-red-500 hover:underline font-semibold mt-2 hidden">Sign Out</button>
       </div>
       <p id="sync-status" class="text-sm text-gray-600 mt-2"></p>
+      <button id="load-from-cloud-button" class="mt-2 bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-colors duration-200 hidden">Load Data from Cloud</button>
     </section>
 
     <section class="bg-white p-6 rounded-lg shadow-md mb-10 transition-transform duration-300 hover:scale-[1.02]">
@@ -184,9 +185,16 @@
       return id;
     }
 
-    function generateDbUserId() {
-      const id = `db_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      return id;
+    function generateDbUserId(email) {
+      // Create a deterministic user_id based on the email
+      // Simple hash function to convert email to a consistent string
+      let hash = 0;
+      for (let i = 0; i < email.length; i++) {
+        const char = email.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+      }
+      return `db_${Math.abs(hash).toString(36)}`;
     }
 
     function sanitizeInput(input) {
@@ -236,6 +244,7 @@
         document.getElementById('google-user-email').classList.add('hidden');
         document.getElementById('google-signin-button').classList.remove('hidden');
         document.getElementById('google-signout-button').classList.add('hidden');
+        document.getElementById('load-from-cloud-button').classList.add('hidden');
         document.getElementById('sync-status').textContent = 'Signed out from Google.';
         updateCloudSyncVisibility();
       });
@@ -429,6 +438,7 @@
 
     function updateCloudSyncVisibility() {
       const googleSignInSection = document.getElementById('google-signin-section');
+      const loadFromCloudButton = document.getElementById('load-from-cloud-button');
 
       if (isCloudSyncEnabled) {
         googleSignInSection.classList.remove('hidden');
@@ -441,9 +451,11 @@
           document.getElementById('google-user-email').textContent = `Signed in as: ${googleUserEmail}`;
           document.getElementById('google-signin-button').classList.add('hidden');
           document.getElementById('google-signout-button').classList.remove('hidden');
+          loadFromCloudButton.classList.remove('hidden');
         }
       } else {
         googleSignInSection.classList.add('hidden');
+        loadFromCloudButton.classList.add('hidden');
       }
     }
 
@@ -592,7 +604,8 @@
         return;
       }
 
-      dbUserId = localStorage.getItem('mediatracked_dbUserId') || generateDbUserId();
+      // Generate dbUserId based on email
+      dbUserId = generateDbUserId(googleUserEmail);
       localStorage.setItem('mediatracked_dbUserId', dbUserId);
 
       try {
@@ -603,8 +616,8 @@
             'Authorization': `Bearer ${googleAccessToken}`
           },
           body: JSON.stringify({
-            id: parseInt(dbUserId.split('_')[1], 10), // Extract the timestamp part for the 'id' field
-            user_id: dbUserId, // Use dbUserId instead of userId
+            id: parseInt(Date.now(), 10), // Use current timestamp as id
+            user_id: dbUserId,
             email: googleUserEmail
           })
         });
@@ -758,6 +771,7 @@
       const filterSelect = document.getElementById('filter');
       const toggleAffiliateButton = document.getElementById('toggle-affiliate-button');
       const googleSignoutButton = document.getElementById('google-signout-button');
+      const loadFromCloudButton = document.getElementById('load-from-cloud-button');
 
       if (cloudSyncCheckbox) {
         cloudSyncCheckbox.addEventListener('change', toggleCloudSync);
@@ -785,6 +799,10 @@
 
       if (googleSignoutButton) {
         googleSignoutButton.addEventListener('click', signOut);
+      }
+
+      if (loadFromCloudButton) {
+        loadFromCloudButton.addEventListener('click', loadFromCloud);
       }
 
       // Initialize the app
