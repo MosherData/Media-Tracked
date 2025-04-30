@@ -21,15 +21,6 @@
     </header>
 
     <section id="cloud-sync-settings" class="bg-green-50 p-4 rounded-lg mb-10 text-center animate-fade-in">
-      <p class="text-gray-800 mb-2">
-        <label class="flex items-center justify-center gap-2">
-          <input id="cloud-sync-enabled" type="checkbox" />
-          Enable Cloud Sync (requires Google login)
-        </label>
-      </p>
-      <p class="text-sm text-gray-600 mb-2">
-        Note: When cloud sync is enabled, your data is stored unencrypted in our database to sync across devices.
-      </p>
       <div id="google-signin-section" class="mt-2 hidden">
         <div id="google-signin-button" class="g_id_signin" data-type="standard" data-size="medium" data-theme="outline" data-text="sign_in_with" data-shape="rectangular" data-logo_alignment="left"></div>
         <p id="google-user-email" class="text-sm text-gray-600 mt-2 hidden"></p>
@@ -133,26 +124,14 @@
   </div>
 
   <script>
-    let media;
-    try {
-      media = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
-      if (!Array.isArray(media)) {
-        media = [];
-        localStorage.setItem('mediatracked_media', JSON.stringify(media));
-      }
-    } catch (error) {
-      console.error('Error parsing mediatracked_media from localStorage:', error);
-      media = [];
-      localStorage.setItem('mediatracked_media', JSON.stringify(media));
-    }
-    console.log('Initial media:', media);
-
-    let isCloudSyncEnabled = localStorage.getItem('mediatracked_cloudSyncEnabled') === 'true';
+    let media = [];
+    let suggestionsCache = {};
     let userId = localStorage.getItem('mediatracked_userId') || generateUserId();
     let isAffiliateCollapsed = false;
     let googleAccessToken = null;
     let googleUserEmail = null;
     let dbUserId = null;
+    let isLoggedIn = false;
 
     const CLIENT_ID = '1099263612427-lg5p8n7ssb3ed7936on9u2qhu7rrtin9.apps.googleusercontent.com';
     const BACKEND_URL = 'https://mediatracked-backend.vercel.app';
@@ -188,19 +167,39 @@
       ]
     };
 
-    let suggestionsCache;
-    try {
-      suggestionsCache = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
-      if (typeof suggestionsCache !== 'object' || suggestionsCache === null) {
-        suggestionsCache = {};
-        localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+    function initializeData() {
+      if (!isLoggedIn) {
+        try {
+          const storedMedia = JSON.parse(localStorage.getItem('mediatracked_media'));
+          if (Array.isArray(storedMedia)) {
+            media = storedMedia;
+          } else {
+            media = [];
+            localStorage.setItem('mediatracked_media', JSON.stringify(media));
+          }
+        } catch (error) {
+          console.error('Error parsing mediatracked_media from localStorage:', error);
+          media = [];
+          localStorage.setItem('mediatracked_media', JSON.stringify(media));
+        }
+
+        try {
+          const storedSuggestions = JSON.parse(localStorage.getItem('mediatracked_suggestions'));
+          if (typeof storedSuggestions === 'object' && storedSuggestions !== null) {
+            suggestionsCache = storedSuggestions;
+          } else {
+            suggestionsCache = {};
+            localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+          }
+        } catch (error) {
+          console.error('Error parsing mediatracked_suggestions from localStorage:', error);
+          suggestionsCache = {};
+          localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+        }
       }
-    } catch (error) {
-      console.error('Error parsing mediatracked_suggestions from localStorage:', error);
-      suggestionsCache = {};
-      localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+      console.log('Initial media:', media);
+      console.log('Initial suggestionsCache:', suggestionsCache);
     }
-    console.log('Initial suggestionsCache:', suggestionsCache);
 
     function generateUserId() {
       const id = 'user_' + Math.random().toString(36).substr(2, 9);
@@ -246,12 +245,7 @@
       localStorage.setItem('mediatracked_googleUserEmail', googleUserEmail);
       localStorage.setItem('mediatracked_googleAccessToken', googleAccessToken);
       
-      isCloudSyncEnabled = true;
-      localStorage.setItem('mediatracked_cloudSyncEnabled', isCloudSyncEnabled);
-      const cloudSyncCheckbox = document.getElementById('cloud-sync-enabled');
-      if (cloudSyncCheckbox) {
-        cloudSyncCheckbox.checked = true;
-      }
+      isLoggedIn = true;
 
       updateCloudSyncVisibility();
       document.getElementById('google-user-email').classList.remove('hidden');
@@ -261,8 +255,36 @@
 
       try {
         await updateUserInDatabase();
+        
+        // Load local data before merging with cloud
+        const localMedia = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
+        const localSuggestions = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
+        
+        // Load from cloud
         await loadFromCloud();
-        syncToCloud();
+        
+        // Merge local data into cloud data
+        if (Array.isArray(localMedia) && localMedia.length > 0) {
+          localMedia.forEach(item => {
+            if (!media.some(m => m.id === item.id)) {
+              media.push(item);
+            }
+          });
+        }
+        if (typeof localSuggestions === 'object' && localSuggestions !== null) {
+          Object.keys(localSuggestions).forEach(key => {
+            if (!suggestionsCache[key]) {
+              suggestionsCache[key] = localSuggestions[key];
+            }
+          });
+        }
+        
+        // Clear local storage since we're now using cloud
+        localStorage.removeItem('mediatracked_media');
+        localStorage.removeItem('mediatracked_suggestions');
+        
+        // Sync merged data to cloud
+        await syncToCloud();
       } catch (error) {
         console.error('Login process failed:', error);
         signOut();
@@ -275,6 +297,7 @@
         googleAccessToken = null;
         googleUserEmail = null;
         dbUserId = null;
+        isLoggedIn = false;
         localStorage.removeItem('mediatracked_googleAccessToken');
         localStorage.removeItem('mediatracked_googleUserEmail');
         localStorage.removeItem('mediatracked_dbUserId');
@@ -283,6 +306,13 @@
         document.getElementById('google-signout-button').classList.add('hidden');
         document.getElementById('sync-status').textContent = 'Signed out from Google.';
         updateCloudSyncVisibility();
+        
+        // Reload data from local storage
+        media = [];
+        suggestionsCache = {};
+        initializeData();
+        renderMedia();
+        fetchSuggestions();
       });
     }
 
@@ -324,28 +354,30 @@
     }
 
     function saveMedia() {
-      localStorage.setItem('mediatracked_media', JSON.stringify(media));
-      console.log('Saved media to localStorage:', media);
-      if (isCloudSyncEnabled && googleAccessToken) {
-        console.log('Attempting to sync to cloud - isCloudSyncEnabled:', isCloudSyncEnabled, 'googleAccessToken:', googleAccessToken);
+      if (isLoggedIn && googleAccessToken && dbUserId) {
+        console.log('User is logged in, syncing to cloud instead of localStorage');
         try {
           syncToCloud();
         } catch (error) {
           console.error('Error in syncToCloud during saveMedia:', error);
         }
+      } else {
+        localStorage.setItem('mediatracked_media', JSON.stringify(media));
+        console.log('Saved media to localStorage:', media);
       }
     }
 
     function saveSuggestions() {
-      localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
-      console.log('Saved suggestionsCache to localStorage:', suggestionsCache);
-      if (isCloudSyncEnabled && googleAccessToken) {
-        console.log('Attempting to sync to cloud - isCloudSyncEnabled:', isCloudSyncEnabled, 'googleAccessToken:', googleAccessToken);
+      if (isLoggedIn && googleAccessToken && dbUserId) {
+        console.log('User is logged in, syncing to cloud instead of localStorage');
         try {
           syncToCloud();
         } catch (error) {
           console.error('Error in syncToCloud during saveSuggestions:', error);
         }
+      } else {
+        localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+        console.log('Saved suggestionsCache to localStorage:', suggestionsCache);
       }
     }
 
@@ -356,7 +388,7 @@
     }
 
     async function fetchAmazonData(keywords, searchIndex, operation = 'SearchItems') {
-      if (isTokenExpired(googleAccessToken)) {
+      if (!isLoggedIn || isTokenExpired(googleAccessToken)) {
         promptReauthentication();
         return null;
       }
@@ -417,7 +449,7 @@
           };
         }).filter(item => item);
       } else {
-        results = [{ title: navigator.onLine ? 'Error fetching data' : 'Offline? Enter manually', year: '' }];
+        results = [{ title: navigator.onLine ? 'Error fetching data' : 'OfflineDav? Enter manually', year: '' }];
       }
 
       loadingIndicator.classList.add('hidden');
@@ -496,7 +528,7 @@
 
     function updateCloudSyncVisibility() {
       const googleSignInSection = document.getElementById('google-signin-section');
-      if (isCloudSyncEnabled) {
+      if (isLoggedIn) {
         googleSignInSection.classList.remove('hidden');
         googleAccessToken = localStorage.getItem('mediatracked_googleAccessToken');
         googleUserEmail = localStorage.getItem('mediatracked_googleUserEmail');
@@ -512,21 +544,11 @@
       }
     }
 
-    function toggleCloudSync() {
-      isCloudSyncEnabled = document.getElementById('cloud-sync-enabled').checked;
-      localStorage.setItem('mediatracked_cloudSyncEnabled', isCloudSyncEnabled);
-      updateCloudSyncVisibility();
-      if (isCloudSyncEnabled && googleAccessToken) {
-        loadFromCloud();
-        syncToCloud();
-      }
-    }
-
     async function syncToCloud() {
-      if (!isCloudSyncEnabled || !googleAccessToken || !dbUserId) {
+      if (!isLoggedIn || !googleAccessToken || !dbUserId) {
         const syncStatus = document.getElementById('sync-status');
-        syncStatus.textContent = 'Sync disabled, not signed in, or user not registered.';
-        console.log('syncToCloud failed - conditions not met:', { isCloudSyncEnabled, googleAccessToken, dbUserId });
+        syncStatus.textContent = 'Not signed in or user not registered.';
+        console.log('syncToCloud failed - conditions not met:', { isLoggedIn, googleAccessToken, dbUserId });
         return;
       }
 
@@ -636,21 +658,25 @@
           media = Array.isArray(data.media) ? data.media : [];
           suggestionsCache = (typeof data.suggestions_cache === 'object' && data.suggestions_cache !== null) ? data.suggestions_cache : {};
           console.log('After loadFromCloud - media:', media, 'suggestionsCache:', suggestionsCache);
-          saveMedia();
-          saveSuggestions();
           renderMedia();
           fetchSuggestions();
           syncStatus.textContent = 'Successfully loaded from cloud!';
         } else {
-          syncStatus.textContent = 'No data found in cloud. Using local data.';
-          console.log('loadFromCloud - no cloud data, using local:', { media, suggestionsCache });
+          syncStatus.textContent = 'No data found in cloud.';
+          console.log('loadFromCloud - no cloud data:', { media, suggestionsCache });
+          media = [];
+          suggestionsCache = {};
+          renderMedia();
+          fetchSuggestions();
         }
       } catch (error) {
         console.error('Cloud load error:', error);
-        syncStatus.textContent = 'Failed to load from cloud. Using local data.';
-        media = Array.isArray(media) ? media : [];
-        suggestionsCache = (typeof suggestionsCache === 'object' && suggestionsCache !== null) ? suggestionsCache : {};
+        syncStatus.textContent = 'Failed to load from cloud.';
+        media = [];
+        suggestionsCache = {};
         console.log('After loadFromCloud error - media:', media, 'suggestionsCache:', suggestionsCache);
+        renderMedia();
+        fetchSuggestions();
       }
     }
 
@@ -696,14 +722,13 @@
           }
 
           console.log('User updated in database:', responseData);
-          return; // Success, exit the function
+          return;
         } catch (error) {
           attempt++;
           console.error(`User update error (attempt ${attempt}/${maxRetries}):`, error.message);
           if (attempt === maxRetries) {
-            throw error; // Re-throw after max retries
+            throw error;
           }
-          // Wait before retrying
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
       }
@@ -839,18 +864,12 @@
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
-      const cloudSyncCheckbox = document.getElementById('cloud-sync-enabled');
       const titleInput = document.getElementById('title');
       const addMediaButton = document.getElementById('add-media-button');
       const typeSelect = document.getElementById('type');
       const filterSelect = document.getElementById('filter');
       const toggleAffiliateButton = document.getElementById('toggle-affiliate-button');
       const googleSignoutButton = document.getElementById('google-signout-button');
-
-      if (cloudSyncCheckbox) {
-        cloudSyncCheckbox.checked = isCloudSyncEnabled;
-        cloudSyncCheckbox.addEventListener('change', toggleCloudSync);
-      }
 
       if (titleInput) {
         titleInput.addEventListener('input', fetchAutocomplete);
@@ -877,17 +896,24 @@
       }
 
       initGoogleClient();
-      updateCloudSyncVisibility();
-      updateStatusOptions();
+      
+      // Initialize data from local storage if not logged in
+      initializeData();
 
-      if (isCloudSyncEnabled) {
-        googleAccessToken = localStorage.getItem('mediatracked_googleAccessToken');
-        googleUserEmail = localStorage.getItem('mediatracked_googleUserEmail');
-        dbUserId = localStorage.getItem('mediatracked_dbUserId');
-        console.log('On load - isCloudSyncEnabled:', isCloudSyncEnabled, 'googleAccessToken:', googleAccessToken, 'googleUserEmail:', googleUserEmail, 'dbUserId:', dbUserId);
-        if (googleAccessToken && googleUserEmail && dbUserId && !isTokenExpired(googleAccessToken)) {
-          await loadFromCloud();
-        }
+      // Check if user is already logged in
+      googleAccessToken = localStorage.getItem('mediatracked_googleAccessToken');
+      googleUserEmail = localStorage.getItem('mediatracked_googleUserEmail');
+      dbUserId = localStorage.getItem('mediatracked_dbUserId');
+      if (googleAccessToken && googleUserEmail && dbUserId && !isTokenExpired(googleAccessToken)) {
+        isLoggedIn = true;
+        updateCloudSyncVisibility();
+        document.getElementById('google-user-email').classList.remove('hidden');
+        document.getElementById('google-user-email').textContent = `Signed in as: ${googleUserEmail}`;
+        document.getElementById('google-signin-button').classList.add('hidden');
+        document.getElementById('google-signout-button').classList.remove('hidden');
+        await loadFromCloud();
+      } else {
+        updateCloudSyncVisibility();
       }
 
       renderMedia();
