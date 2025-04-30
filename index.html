@@ -261,12 +261,6 @@
       document.getElementById('google-signout-button').classList.remove('hidden');
 
       await updateUserInDatabase();
-      const userExists = await checkUserExists();
-      if (!userExists) {
-        console.error('User not found in database after update');
-        document.getElementById('sync-status').textContent = 'Failed to verify user in database.';
-        return;
-      }
       await loadFromCloud();
       syncToCloud();
     }
@@ -542,12 +536,39 @@
       try {
         const mediaTypes = calculateMediaTypes();
 
-        // Simplified sanitization: ensure defaults and avoid null
-        const sanitizedMedia = Array.isArray(media) ? media : [];
-        const sanitizedSuggestionsCache = (typeof suggestionsCache === 'object' && suggestionsCache !== null) ? suggestionsCache : {};
-        const sanitizedMediaTypes = (typeof mediaTypes === 'object' && mediaTypes !== null) ? mediaTypes : {};
+        const sanitizeForJSON = (obj) => {
+          if (obj === null || obj === undefined) {
+            return Array.isArray(obj) ? [] : {};
+          }
+          if (typeof obj !== 'object') {
+            return Array.isArray(obj) ? [] : {};
+          }
 
-        console.log('Data for /api/sync:', {
+          try {
+            const sanitized = JSON.parse(JSON.stringify(obj, (key, value) => {
+              if (value === undefined || value === null) return null;
+              if (typeof value === 'function') return null;
+              if (typeof value === 'object' && value !== null) {
+                return Object.fromEntries(
+                  Object.entries(value).map(([k, v]) => [k, sanitizeForJSON(v)])
+                );
+              }
+              return value;
+            }));
+            return (Array.isArray(sanitized) || (typeof sanitized === 'object' && sanitized !== null))
+              ? sanitized
+              : (Array.isArray(obj) ? [] : {});
+          } catch (error) {
+            console.error('Sanitization error:', error);
+            return Array.isArray(obj) ? [] : {};
+          }
+        };
+
+        const sanitizedMedia = sanitizeForJSON(media) || [];
+        const sanitizedSuggestionsCache = sanitizeForJSON(suggestionsCache) || {};
+        const sanitizedMediaTypes = sanitizeForJSON(mediaTypes) || {};
+
+        console.log('Sanitized data for /api/sync:', {
           user_id: dbUserId,
           media: sanitizedMedia,
           suggestions_cache: sanitizedSuggestionsCache,
@@ -630,12 +651,11 @@
 
     async function updateUserInDatabase() {
       if (!googleAccessToken || !googleUserEmail) {
-        console.error('Cannot update user: Not signed in', { googleAccessToken, googleUserEmail });
+        console.error('Cannot update user: Not signed in');
         return;
       }
 
       if (isTokenExpired(googleAccessToken)) {
-        console.log('Token expired in updateUserInDatabase');
         promptReauthentication();
         return;
       }
@@ -644,7 +664,6 @@
       localStorage.setItem('mediatracked_dbUserId', dbUserId);
 
       try {
-        console.log('Sending request to /api/users:', { id: parseInt(Date.now(), 10), user_id: dbUserId, email: googleUserEmail });
         const response = await fetch(`${BACKEND_URL}/api/users`, {
           method: 'POST',
           headers: {
@@ -666,41 +685,7 @@
         const data = await response.json();
         console.log('User updated in database:', data);
       } catch (error) {
-        console.error('User update error:', error.message);
-        throw error;
-      }
-    }
-
-    async function checkUserExists() {
-      if (!googleAccessToken || !dbUserId) {
-        console.log('Cannot check user: Missing credentials', { googleAccessToken, dbUserId });
-        return false;
-      }
-
-      if (isTokenExpired(googleAccessToken)) {
-        console.log('Token expired in checkUserExists');
-        promptReauthentication();
-        return false;
-      }
-
-      try {
-        const response = await fetch(`${BACKEND_URL}/api/users?user_id=${dbUserId}`, {
-          headers: {
-            'Authorization': `Bearer ${googleAccessToken}`
-          }
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(`Failed to check user: ${errorData.error || response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('User check result:', data);
-        return !!data.user_id;
-      } catch (error) {
-        console.error('Error checking user:', error.message);
-        return false;
+        console.error('User update error:', error);
       }
     }
 
