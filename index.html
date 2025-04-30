@@ -235,7 +235,7 @@
         localStorage.removeItem('mediatracked_googleAccessToken');
         localStorage.removeItem('mediatracked_googleUserEmail');
         localStorage.removeItem('mediatracked_dbUserId');
-        document.getElement acquaintances.getElementById('google-user-email').classList.add('hidden');
+        document.getElementById('google-user-email').classList.add('hidden');
         document.getElementById('google-signin-button').classList.remove('hidden');
         document.getElementById('google-signout-button').classList.add('hidden');
         document.getElementById('sync-status').textContent = 'Signed out from Google.';
@@ -479,22 +479,36 @@
 
         // Enhanced sanitization to ensure JSONB compatibility
         const sanitizeForJSON = (obj) => {
+          // Return null for invalid inputs
           if (obj === null || obj === undefined) return null;
-          return JSON.parse(JSON.stringify(obj, (key, value) => {
-            if (value === undefined) return null;
-            if (typeof value === 'function') return null;
-            if (typeof value === 'object' && value !== null) {
-              return Object.fromEntries(
-                Object.entries(value).map(([k, v]) => [k, sanitizeForJSON(v)])
-              );
-            }
-            return value;
-          }));
+
+          // Ensure obj is an object or array
+          if (typeof obj !== 'object') return null;
+
+          try {
+            // Deep clone and sanitize the object
+            const sanitized = JSON.parse(JSON.stringify(obj, (key, value) => {
+              if (value === undefined || value === null) return null;
+              if (typeof value === 'function') return null;
+              if (typeof value === 'object' && value !== null) {
+                return Object.fromEntries(
+                  Object.entries(value).map(([k, v]) => [k, sanitizeForJSON(v)])
+                );
+              }
+              return value;
+            }));
+
+            // Ensure the result is an object or array
+            return (Array.isArray(sanitized) || (typeof sanitized === 'object' && sanitized !== null)) ? sanitized : null;
+          } catch (error) {
+            console.error('Sanitization error:', error);
+            return null;
+          }
         };
 
-        const sanitizedMedia = sanitizeForJSON(media);
-        const sanitizedSuggestionsCache = sanitizeForJSON(suggestionsCache);
-        const sanitizedMediaTypes = sanitizeForJSON(mediaTypes);
+        const sanitizedMedia = sanitizeForJSON(media) || [];
+        const sanitizedSuggestionsCache = sanitizeForJSON(suggestionsCache) || {};
+        const sanitizedMediaTypes = sanitizeForJSON(mediaTypes) || {};
 
         console.log('Sanitized data for /api/sync:', {
           user_id: dbUserId,
@@ -517,7 +531,10 @@
           })
         });
 
-        if (!response.ok) throw new Error('Failed to sync');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Failed to sync: ${errorData.error || response.statusText}`);
+        }
         syncStatus.textContent = 'Successfully synced to cloud!';
       } catch (error) {
         console.error('Cloud sync error:', error);
