@@ -21,7 +21,7 @@
     </header>
 
     <section id="cloud-sync-settings" class="bg-green-50 p-4 rounded-lg mb-10 text-center animate-fade-in">
-      <div id="google-signin-section" class="mt-2 hidden">
+      <div id="google-signin-section" class="mt-2">
         <div id="google-signin-button" class="g_id_signin" data-type="standard" data-size="medium" data-theme="outline" data-text="sign_in_with" data-shape="rectangular" data-logo_alignment="left"></div>
         <p id="google-user-email" class="text-sm text-gray-600 mt-2 hidden"></p>
         <button id="google-signout-button" class="text-red-500 hover:underline font-semibold mt-2 hidden">Sign Out</button>
@@ -554,20 +554,24 @@
     }
 
     function updateCloudSyncVisibility() {
-      const googleSignInSection = document.getElementById('google-signin-section');
+      const googleSignInButton = document.getElementById('google-signin-button');
+      const googleUserEmail = document.getElementById('google-user-email');
+      const googleSignOutButton = document.getElementById('google-signout-button');
+
       if (isLoggedIn) {
-        googleSignInSection.classList.remove('hidden');
         googleAccessToken = localStorage.getItem('mediatracked_googleAccessToken');
         googleUserEmail = localStorage.getItem('mediatracked_googleUserEmail');
         dbUserId = localStorage.getItem('mediatracked_dbUserId');
         if (googleUserEmail) {
-          document.getElementById('google-user-email').classList.remove('hidden');
-          document.getElementById('google-user-email').textContent = `Signed in as: ${googleUserEmail}`;
-          document.getElementById('google-signin-button').classList.add('hidden');
-          document.getElementById('google-signout-button').classList.remove('hidden');
+          googleUserEmail.classList.remove('hidden');
+          googleUserEmail.textContent = `Signed in as: ${googleUserEmail}`;
+          googleSignInButton.classList.add('hidden');
+          googleSignOutButton.classList.remove('hidden');
         }
       } else {
-        googleSignInSection.classList.add('hidden');
+        googleSignInButton.classList.remove('hidden');
+        googleUserEmail.classList.add('hidden');
+        googleSignOutButton.classList.add('hidden');
       }
     }
 
@@ -748,7 +752,7 @@
             throw new Error(`Failed to update user: ${responseData.error || response.statusText}`);
           }
 
-          console.log('User updated in databaseаги: ', responseData);
+          console.log('User updated in database:', responseData);
           return;
         } catch (error) {
           attempt++;
@@ -938,16 +942,9 @@
       dbUserId = localStorage.getItem('mediatracked_dbUserId');
       if (googleAccessToken && googleUserEmail && dbUserId && !isTokenExpired(googleAccessToken)) {
         isLoggedIn = true;
-        updateCloudSyncVisibility();
-        document.getElementById('google-user-email').classList.remove('hidden');
-        document.getElementById('google-user-email').textContent = `Signed in as: ${googleUserEmail}`;
-        document.getElementById('google-signin-button').classList.add('hidden');
-        document.getElementById('google-signout-button').classList.remove('hidden');
         await loadFromCloud();
-      } else {
-        updateCloudSyncVisibility();
       }
-
+      updateCloudSyncVisibility();
       renderMedia();
       fetchSuggestions();
       renderAffiliateLinks();
