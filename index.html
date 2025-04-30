@@ -245,8 +245,8 @@
       localStorage.setItem('mediatracked_googleUserEmail', googleUserEmail);
       localStorage.setItem('mediatracked_googleAccessToken', googleAccessToken);
       
+      // Temporarily set isLoggedIn to true to update UI
       isLoggedIn = true;
-
       updateCloudSyncVisibility();
       document.getElementById('google-user-email').classList.remove('hidden');
       document.getElementById('google-user-email').textContent = `Signed in as: ${googleUserEmail}`;
@@ -254,11 +254,11 @@
       document.getElementById('google-signout-button').classList.remove('hidden');
 
       try {
-        await updateUserInDatabase();
-        
-        // Load local data before merging with cloud
+        // Preserve local data in case login fails
         const localMedia = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
         const localSuggestions = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
+
+        await updateUserInDatabase();
         
         // Load from cloud
         await loadFromCloud();
@@ -287,8 +287,13 @@
         await syncToCloud();
       } catch (error) {
         console.error('Login process failed:', error);
+        // Restore local data
+        media = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
+        suggestionsCache = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
         signOut();
         document.getElementById('sync-status').textContent = 'Failed to register user. Please try signing in again.';
+        renderMedia();
+        fetchSuggestions();
       }
     }
 
@@ -449,7 +454,7 @@
           };
         }).filter(item => item);
       } else {
-        results = [{ title: navigator.onLine ? 'Error fetching data' : 'OfflineDav? Enter manually', year: '' }];
+        results = [{ title: navigator.onLine ? 'Error fetching data' : 'Offline? Enter manually', year: '' }];
       }
 
       loadingIndicator.classList.add('hidden');
@@ -683,13 +688,13 @@
     async function updateUserInDatabase() {
       if (!googleAccessToken || !googleUserEmail) {
         console.error('Cannot update user: Not signed in');
-        return;
+        throw new Error('Not signed in');
       }
 
       if (isTokenExpired(googleAccessToken)) {
         console.error('Token expired in updateUserInDatabase');
         promptReauthentication();
-        return;
+        throw new Error('Token expired');
       }
 
       dbUserId = generateDbUserId(googleUserEmail);
