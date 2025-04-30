@@ -246,7 +246,6 @@
       localStorage.setItem('mediatracked_googleUserEmail', googleUserEmail);
       localStorage.setItem('mediatracked_googleAccessToken', googleAccessToken);
       
-      // Enable cloud sync automatically on login
       isCloudSyncEnabled = true;
       localStorage.setItem('mediatracked_cloudSyncEnabled', isCloudSyncEnabled);
       const cloudSyncCheckbox = document.getElementById('cloud-sync-enabled');
@@ -260,9 +259,15 @@
       document.getElementById('google-signin-button').classList.add('hidden');
       document.getElementById('google-signout-button').classList.remove('hidden');
 
-      await updateUserInDatabase();
-      await loadFromCloud();
-      syncToCloud();
+      try {
+        await updateUserInDatabase();
+        await loadFromCloud();
+        syncToCloud();
+      } catch (error) {
+        console.error('Login process failed:', error);
+        signOut();
+        document.getElementById('sync-status').textContent = 'Failed to register user. Please try signing in again.';
+      }
     }
 
     function signOut() {
@@ -656,36 +661,51 @@
       }
 
       if (isTokenExpired(googleAccessToken)) {
+        console.error('Token expired in updateUserInDatabase');
         promptReauthentication();
         return;
       }
 
       dbUserId = generateDbUserId(googleUserEmail);
       localStorage.setItem('mediatracked_dbUserId', dbUserId);
+      console.log('Attempting to update user in database:', { dbUserId, email: googleUserEmail });
 
-      try {
-        const response = await fetch(`${BACKEND_URL}/api/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${googleAccessToken}`
-          },
-          body: JSON.stringify({
-            id: parseInt(Date.now(), 10),
-            user_id: dbUserId,
-            email: googleUserEmail
-          })
-        });
+      const maxRetries = 3;
+      let attempt = 0;
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(`Failed to update user: ${errorData.error || response.statusText}`);
+      while (attempt < maxRetries) {
+        try {
+          const response = await fetch(`${BACKEND_URL}/api/users`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${googleAccessToken}`
+            },
+            body: JSON.stringify({
+              id: parseInt(Date.now(), 10),
+              user_id: dbUserId,
+              email: googleUserEmail
+            })
+          });
+
+          const responseData = await response.json();
+          console.log('Response from /api/users:', response.status, responseData);
+
+          if (!response.ok) {
+            throw new Error(`Failed to update user: ${responseData.error || response.statusText}`);
+          }
+
+          console.log('User updated in database:', responseData);
+          return; // Success, exit the function
+        } catch (error) {
+          attempt++;
+          console.error(`User update error (attempt ${attempt}/${maxRetries}):`, error.message);
+          if (attempt === maxRetries) {
+            throw error; // Re-throw after max retries
+          }
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
-
-        const data = await response.json();
-        console.log('User updated in database:', data);
-      } catch (error) {
-        console.error('User update error:', error);
       }
     }
 
@@ -860,7 +880,6 @@
       updateCloudSyncVisibility();
       updateStatusOptions();
 
-      // Automatically load from cloud if signed in and cloud sync is enabled
       if (isCloudSyncEnabled) {
         googleAccessToken = localStorage.getItem('mediatracked_googleAccessToken');
         googleUserEmail = localStorage.getItem('mediatracked_googleUserEmail');
