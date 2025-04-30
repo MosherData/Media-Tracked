@@ -9,8 +9,6 @@
   <meta name="apple-mobile-web-app-title" content="MediaTracked">
   <meta name="description" content="Track books, audiobooks, movies, TV shows, and games privately and offline with MediaTracked.">
   <link rel="manifest" href="/Media-Tracked/manifest.json">
-  <!-- Removed apple-touch-icon since icon.png is missing -->
-  <!-- <link rel="apple-touch-icon" href="/Media-Tracked/icon.png"> -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous">
   <link rel="stylesheet" href="./dist/output.css">
   <script src="https://accounts.google.com/gsi/client"></script>
@@ -136,7 +134,6 @@
   </div>
 
   <script>
-    // Initialize media with a try-catch to handle localStorage errors
     let media;
     try {
       media = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
@@ -149,6 +146,7 @@
       media = [];
       localStorage.setItem('mediatracked_media', JSON.stringify(media));
     }
+    console.log('Initial media:', media);
 
     let isCloudSyncEnabled = localStorage.getItem('mediatracked_cloudSyncEnabled') === 'true';
     let userId = localStorage.getItem('mediatracked_userId') || generateUserId();
@@ -191,7 +189,6 @@
       ]
     };
 
-    // Initialize suggestionsCache with a try-catch
     let suggestionsCache;
     try {
       suggestionsCache = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
@@ -204,6 +201,7 @@
       suggestionsCache = {};
       localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
     }
+    console.log('Initial suggestionsCache:', suggestionsCache);
 
     function generateUserId() {
       const id = 'user_' + Math.random().toString(36).substr(2, 9);
@@ -312,6 +310,7 @@
 
     function saveMedia() {
       localStorage.setItem('mediatracked_media', JSON.stringify(media));
+      console.log('Saved media to localStorage:', media);
       if (isCloudSyncEnabled && googleAccessToken) {
         syncToCloud();
       }
@@ -319,6 +318,7 @@
 
     function saveSuggestions() {
       localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+      console.log('Saved suggestionsCache to localStorage:', suggestionsCache);
       if (isCloudSyncEnabled && googleAccessToken) {
         syncToCloud();
       }
@@ -589,10 +589,14 @@
         });
         if (!response.ok) throw new Error('Failed to load');
         const data = await response.json();
+        console.log('Data loaded from cloud:', data);
 
         if (data && Object.keys(data).length > 0) {
-          media = data.media || [];
-          suggestionsCache = data.suggestions_cache || {};
+          // Ensure media is an array
+          media = Array.isArray(data.media) ? data.media : [];
+          // Ensure suggestionsCache is an object
+          suggestionsCache = (typeof data.suggestions_cache === 'object' && data.suggestions_cache !== null) ? data.suggestions_cache : {};
+          console.log('After loadFromCloud - media:', media, 'suggestionsCache:', suggestionsCache);
           saveMedia();
           saveSuggestions();
           renderMedia();
@@ -604,6 +608,10 @@
       } catch (error) {
         console.error('Cloud load error:', error);
         syncStatus.textContent = 'Failed to load from cloud. Check your connection and try again.';
+        // Ensure media and suggestionsCache are not undefined even if load fails
+        media = Array.isArray(media) ? media : [];
+        suggestionsCache = (typeof suggestionsCache === 'object' && suggestionsCache !== null) ? suggestionsCache : {};
+        console.log('After loadFromCloud error - media:', media, 'suggestionsCache:', suggestionsCache);
       }
     }
 
@@ -709,7 +717,7 @@
         Game: 'VideoGames'
       }[topType];
 
-      if (suggestionsCache[topType]) {
+      if (suggestionsCach) {
         renderSuggestions(suggestionsCache[topType]);
         return;
       }
@@ -747,35 +755,6 @@
     }
 
     function toggleAffiliateLinks() {
-      const affiliateContent = document.getElementById('affiliate-content');
-      const toggleIcon = document.getElementById('affiliate-toggle-icon');
-      isAffiliateCollapsed = !isAffiliateCollapsed;
-      affiliateContent.classList.toggle('hidden', isAffiliateCollapsed);
-      toggleIcon.classList.toggle('fa-chevron-up', !isAffiliateCollapsed);
-      toggleIcon.classList.toggle('fa-chevron-down', isAffiliateCollapsed);
-    }
-
-    function renderAffiliateLinks() {
-      const affiliateList = document.getElementById('affiliate-list');
-      const typesPresent = [...new Set(media.map(item => item.type))];
-      const linksToShow = typesPresent.length
-        ? typesPresent.flatMap(type => affiliateLinks[type] || [])
-        : Object.values(affiliateLinks).flat();
-
-      affiliateList.innerHTML = linksToShow.map(link => `
-        <a
-          href="${link.url}"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="text-blue-500 hover:underline"
-        >
-          ${link.text}
-        </a>
-      `).join('');
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const cloudSyncCheckbox = document.getElementBy目光function toggleAffiliateLinks() {
       const affiliateContent = document.getElementById('affiliate-content');
       const toggleIcon = document.getElementById('affiliate-toggle-icon');
       isAffiliateCollapsed = !isAffiliateCollapsed;
