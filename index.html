@@ -209,13 +209,16 @@
     }
 
     function generateDbUserId(email) {
+      email = email.trim().toLowerCase();
       let hash = 0;
       for (let i = 0; i < email.length; i++) {
         const char = email.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
         hash = hash & hash;
       }
-      return `db_${Math.abs(hash).toString(36)}`;
+      const userId = `db_${Math.abs(hash).toString(36)}`;
+      console.log('Generated dbUserId:', userId);
+      return userId;
     }
 
     function sanitizeInput(input) {
@@ -291,7 +294,8 @@
       if (!token) return true;
       try {
         const decoded = jwt_decode(token);
-        const currentTime = Math.floor(Date.now() / 1000);
+        const currentTime = Math EPOCH_SECONDS = Math.floor(Date.now() / 1000);
+        console.log('Token expiration check - currentTime:', currentTime, 'exp:', decoded.exp);
         return decoded.exp < currentTime;
       } catch (error) {
         console.error('Error decoding token:', error);
@@ -318,6 +322,7 @@
       localStorage.setItem('mediatracked_media', JSON.stringify(media));
       console.log('Saved media to localStorage:', media);
       if (isCloudSyncEnabled && googleAccessToken) {
+        console.log('Attempting to sync to cloud - isCloudSyncEnabled:', isCloudSyncEnabled, 'googleAccessToken:', googleAccessToken);
         syncToCloud();
       }
     }
@@ -326,6 +331,7 @@
       localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
       console.log('Saved suggestionsCache to localStorage:', suggestionsCache);
       if (isCloudSyncEnabled && googleAccessToken) {
+        console.log('Attempting to sync to cloud - isCloudSyncEnabled:', isCloudSyncEnabled, 'googleAccessToken:', googleAccessToken);
         syncToCloud();
       }
     }
@@ -496,6 +502,7 @@
       if (!isCloudSyncEnabled || !googleAccessToken || !dbUserId) {
         const syncStatus = document.getElementById('sync-status');
         syncStatus.textContent = 'Sync disabled, not signed in, or user not registered.';
+        console.log('syncToCloud failed - conditions not met:', { isCloudSyncEnabled, googleAccessToken, dbUserId });
         return;
       }
 
@@ -562,6 +569,7 @@
           throw new Error(`Failed to sync: ${errorData.error || response.statusText}`);
         }
         syncStatus.textContent = 'Successfully synced to cloud!';
+        console.log('syncToCloud succeeded');
       } catch (error) {
         console.error('Cloud sync error:', error);
         syncStatus.textContent = 'Failed to sync to cloud. Check your connection and try again.';
@@ -572,6 +580,7 @@
       if (!googleAccessToken || !dbUserId) {
         const syncStatus = document.getElementById('sync-status');
         syncStatus.textContent = 'Please sign in with Google to load data.';
+        console.log('loadFromCloud failed - missing credentials:', { googleAccessToken, dbUserId });
         return;
       }
 
@@ -604,6 +613,7 @@
           syncStatus.textContent = 'Successfully loaded from cloud!';
         } else {
           syncStatus.textContent = 'No data found in cloud. Using local data.';
+          console.log('loadFromCloud - no cloud data, using local:', { media, suggestionsCache });
         }
       } catch (error) {
         console.error('Cloud load error:', error);
@@ -828,6 +838,7 @@
         googleAccessToken = localStorage.getItem('mediatracked_googleAccessToken');
         googleUserEmail = localStorage.getItem('mediatracked_googleUserEmail');
         dbUserId = localStorage.getItem('mediatracked_dbUserId');
+        console.log('On load - isCloudSyncEnabled:', isCloudSyncEnabled, 'googleAccessToken:', googleAccessToken, 'googleUserEmail:', googleUserEmail, 'dbUserId:', dbUserId);
         if (googleAccessToken && googleUserEmail && dbUserId && !isTokenExpired(googleAccessToken)) {
           await loadFromCloud();
         }
