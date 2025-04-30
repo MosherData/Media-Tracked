@@ -298,27 +298,42 @@
     }
 
     function signOut() {
-      google.accounts.id.revoke(googleUserEmail, () => {
-        googleAccessToken = null;
-        googleUserEmail = null;
-        dbUserId = null;
-        isLoggedIn = false;
-        localStorage.removeItem('mediatracked_googleAccessToken');
-        localStorage.removeItem('mediatracked_googleUserEmail');
-        localStorage.removeItem('mediatracked_dbUserId');
-        document.getElementById('google-user-email').classList.add('hidden');
-        document.getElementById('google-signin-button').classList.remove('hidden');
-        document.getElementById('google-signout-button').classList.add('hidden');
-        document.getElementById('sync-status').textContent = 'Signed out from Google.';
-        updateCloudSyncVisibility();
-        
-        // Reload data from local storage
-        media = [];
-        suggestionsCache = {};
-        initializeData();
-        renderMedia();
-        fetchSuggestions();
-      });
+      // Only attempt to revoke if the user is actually signed in
+      if (googleUserEmail && googleAccessToken) {
+        try {
+          google.accounts.id.revoke(googleUserEmail, (response) => {
+            if (response.error) {
+              console.warn('Failed to revoke Google token:', response.error);
+            } else {
+              console.log('Google token revoked successfully');
+            }
+          });
+        } catch (error) {
+          console.warn('Error during Google token revocation:', error);
+        }
+      } else {
+        console.log('No Google session to revoke');
+      }
+
+      googleAccessToken = null;
+      googleUserEmail = null;
+      dbUserId = null;
+      isLoggedIn = false;
+      localStorage.removeItem('mediatracked_googleAccessToken');
+      localStorage.removeItem('mediatracked_googleUserEmail');
+      localStorage.removeItem('mediatracked_dbUserId');
+      document.getElementById('google-user-email').classList.add('hidden');
+      document.getElementById('google-signin-button').classList.remove('hidden');
+      document.getElementById('google-signout-button').classList.add('hidden');
+      document.getElementById('sync-status').textContent = 'Signed out from Google.';
+      updateCloudSyncVisibility();
+      
+      // Reload data from local storage
+      media = [];
+      suggestionsCache = {};
+      initializeData();
+      renderMedia();
+      fetchSuggestions();
     }
 
     function jwt_decode(token) {
@@ -427,6 +442,13 @@
         autocompleteList.innerHTML = '';
         autocompleteList.classList.add('hidden');
         loadingIndicator.classList.add('hidden');
+        return;
+      }
+
+      if (!isLoggedIn) {
+        loadingIndicator.classList.add('hidden');
+        autocompleteList.innerHTML = '<li class="p-3 text-gray-500">Sign in to search for media.</li>';
+        autocompleteList.classList.remove('hidden');
         return;
       }
 
@@ -726,7 +748,7 @@
             throw new Error(`Failed to update user: ${responseData.error || response.statusText}`);
           }
 
-          console.log('User updated in database:', responseData);
+          console.log('User updated in databaseаги: ', responseData);
           return;
         } catch (error) {
           attempt++;
@@ -805,6 +827,11 @@
 
       if (suggestionsCache[topType]) {
         renderSuggestions(suggestionsCache[topType]);
+        return;
+      }
+
+      if (!isLoggedIn) {
+        suggestionsList.innerHTML = '<p class="text-gray-600 text-center">Sign in to see suggestions.</p>';
         return;
       }
 
