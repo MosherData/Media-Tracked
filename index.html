@@ -294,7 +294,7 @@
       if (!token) return true;
       try {
         const decoded = jwt_decode(token);
-        const currentTime = Math EPOCH_SECONDS = Math.floor(Date.now() / 1000);
+        const currentTime = Math.floor(Date.now() / 1000);
         console.log('Token expiration check - currentTime:', currentTime, 'exp:', decoded.exp);
         return decoded.exp < currentTime;
       } catch (error) {
@@ -323,7 +323,11 @@
       console.log('Saved media to localStorage:', media);
       if (isCloudSyncEnabled && googleAccessToken) {
         console.log('Attempting to sync to cloud - isCloudSyncEnabled:', isCloudSyncEnabled, 'googleAccessToken:', googleAccessToken);
-        syncToCloud();
+        try {
+          syncToCloud();
+        } catch (error) {
+          console.error('Error in syncToCloud during saveMedia:', error);
+        }
       }
     }
 
@@ -332,7 +336,11 @@
       console.log('Saved suggestionsCache to localStorage:', suggestionsCache);
       if (isCloudSyncEnabled && googleAccessToken) {
         console.log('Attempting to sync to cloud - isCloudSyncEnabled:', isCloudSyncEnabled, 'googleAccessToken:', googleAccessToken);
-        syncToCloud();
+        try {
+          syncToCloud();
+        } catch (error) {
+          console.error('Error in syncToCloud during saveSuggestions:', error);
+        }
       }
     }
 
@@ -431,24 +439,35 @@
     }
 
     function addMedia(title, type, status) {
+      console.log('addMedia called with:', { title, type, status });
+
       if (!title) {
         title = sanitizeInput(document.getElementById('title').value.trim());
         type = document.getElementById('type').value;
         status = document.getElementById('status').value;
+        console.log('Input values:', { title, type, status });
       }
 
       if (!title) {
         alert('Please enter a title.');
+        console.log('No title, exiting addMedia');
         return;
       }
 
       const newMedia = { id: Date.now(), title, type, status };
+      console.log('New media item:', newMedia);
+      console.log('Media before push:', media, 'isArray:', Array.isArray(media));
       media.push(newMedia);
+      console.log('Media after push:', media);
       saveMedia();
+      console.log('After saveMedia');
       document.getElementById('title').value = '';
       document.getElementById('autocomplete-list').classList.add('hidden');
+      console.log('Cleared input and autocomplete');
       renderMedia();
+      console.log('After renderMedia');
       fetchSuggestions();
+      console.log('After fetchSuggestions');
     }
 
     function toggleStatus(id) {
@@ -664,6 +683,7 @@
     }
 
     function renderMedia() {
+      console.log('renderMedia called with media:', media);
       const mediaList = document.getElementById('media-list');
       const filter = document.getElementById('filter').value;
 
