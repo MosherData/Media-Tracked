@@ -9,7 +9,8 @@
   <meta name="apple-mobile-web-app-title" content="MediaTracked">
   <meta name="description" content="Track books, audiobooks, movies, TV shows, and games privately and offline with MediaTracked.">
   <link rel="manifest" href="/Media-Tracked/manifest.json">
-  <link rel="apple-touch-icon" href="/Media-Tracked/icon.png">
+  <!-- Removed apple-touch-icon since icon.png is missing -->
+  <!-- <link rel="apple-touch-icon" href="/Media-Tracked/icon.png"> -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous">
   <link rel="stylesheet" href="./dist/output.css">
   <script src="https://accounts.google.com/gsi/client"></script>
@@ -135,7 +136,20 @@
   </div>
 
   <script>
-    let media = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
+    // Initialize media with a try-catch to handle localStorage errors
+    let media;
+    try {
+      media = JSON.parse(localStorage.getItem('mediatracked_media')) || [];
+      if (!Array.isArray(media)) {
+        media = [];
+        localStorage.setItem('mediatracked_media', JSON.stringify(media));
+      }
+    } catch (error) {
+      console.error('Error parsing mediatracked_media from localStorage:', error);
+      media = [];
+      localStorage.setItem('mediatracked_media', JSON.stringify(media));
+    }
+
     let isCloudSyncEnabled = localStorage.getItem('mediatracked_cloudSyncEnabled') === 'true';
     let userId = localStorage.getItem('mediatracked_userId') || generateUserId();
     let isAffiliateCollapsed = false;
@@ -177,7 +191,19 @@
       ]
     };
 
-    let suggestionsCache = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
+    // Initialize suggestionsCache with a try-catch
+    let suggestionsCache;
+    try {
+      suggestionsCache = JSON.parse(localStorage.getItem('mediatracked_suggestions')) || {};
+      if (typeof suggestionsCache !== 'object' || suggestionsCache === null) {
+        suggestionsCache = {};
+        localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+      }
+    } catch (error) {
+      console.error('Error parsing mediatracked_suggestions from localStorage:', error);
+      suggestionsCache = {};
+      localStorage.setItem('mediatracked_suggestions', JSON.stringify(suggestionsCache));
+    }
 
     function generateUserId() {
       const id = 'user_' + Math.random().toString(36).substr(2, 9);
@@ -186,13 +212,11 @@
     }
 
     function generateDbUserId(email) {
-      // Create a deterministic user_id based on the email
-      // Simple hash function to convert email to a consistent string
       let hash = 0;
       for (let i = 0; i < email.length; i++) {
         const char = email.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32-bit integer
+        hash = hash & hash;
       }
       return `db_${Math.abs(hash).toString(36)}`;
     }
@@ -259,12 +283,11 @@
       return JSON.parse(jsonPayload);
     }
 
-    // Check if the token is expired
     function isTokenExpired(token) {
       if (!token) return true;
       try {
         const decoded = jwt_decode(token);
-        const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
+        const currentTime = Math.floor(Date.now() / 1000);
         return decoded.exp < currentTime;
       } catch (error) {
         console.error('Error decoding token:', error);
@@ -272,7 +295,6 @@
       }
     }
 
-    // Prompt user to re-authenticate if token is expired
     function promptReauthentication() {
       signOut();
       const syncStatus = document.getElementById('sync-status');
@@ -475,7 +497,6 @@
         return;
       }
 
-      // Check if token is expired
       if (isTokenExpired(googleAccessToken)) {
         promptReauthentication();
         return;
@@ -487,16 +508,11 @@
       try {
         const mediaTypes = calculateMediaTypes();
 
-        // Enhanced sanitization to ensure JSONB compatibility
         const sanitizeForJSON = (obj) => {
-          // Return null for invalid inputs
           if (obj === null || obj === undefined) return null;
-
-          // Ensure obj is an object or array
           if (typeof obj !== 'object') return null;
 
           try {
-            // Deep clone and sanitize the object
             const sanitized = JSON.parse(JSON.stringify(obj, (key, value) => {
               if (value === undefined || value === null) return null;
               if (typeof value === 'function') return null;
@@ -507,8 +523,6 @@
               }
               return value;
             }));
-
-            // Ensure the result is an object or array
             return (Array.isArray(sanitized) || (typeof sanitized === 'object' && sanitized !== null)) ? sanitized : null;
           } catch (error) {
             console.error('Sanitization error:', error);
@@ -604,7 +618,6 @@
         return;
       }
 
-      // Generate dbUserId based on email
       dbUserId = generateDbUserId(googleUserEmail);
       localStorage.setItem('mediatracked_dbUserId', dbUserId);
 
@@ -616,7 +629,7 @@
             'Authorization': `Bearer ${googleAccessToken}`
           },
           body: JSON.stringify({
-            id: parseInt(Date.now(), 10), // Use current timestamp as id
+            id: parseInt(Date.now(), 10),
             user_id: dbUserId,
             email: googleUserEmail
           })
@@ -761,9 +774,36 @@
       `).join('');
     }
 
-    // Initialize the app and attach event listeners
     document.addEventListener('DOMContentLoaded', () => {
-      // Attach event listeners
+      const cloudSyncCheckbox = document.getElementBy目光function toggleAffiliateLinks() {
+      const affiliateContent = document.getElementById('affiliate-content');
+      const toggleIcon = document.getElementById('affiliate-toggle-icon');
+      isAffiliateCollapsed = !isAffiliateCollapsed;
+      affiliateContent.classList.toggle('hidden', isAffiliateCollapsed);
+      toggleIcon.classList.toggle('fa-chevron-up', !isAffiliateCollapsed);
+      toggleIcon.classList.toggle('fa-chevron-down', isAffiliateCollapsed);
+    }
+
+    function renderAffiliateLinks() {
+      const affiliateList = document.getElementById('affiliate-list');
+      const typesPresent = [...new Set(media.map(item => item.type))];
+      const linksToShow = typesPresent.length
+        ? typesPresent.flatMap(type => affiliateLinks[type] || [])
+        : Object.values(affiliateLinks).flat();
+
+      affiliateList.innerHTML = linksToShow.map(link => `
+        <a
+          href="${link.url}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-blue-500 hover:underline"
+        >
+          ${link.text}
+        </a>
+      `).join('');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
       const cloudSyncCheckbox = document.getElementById('cloud-sync-enabled');
       const titleInput = document.getElementById('title');
       const addMediaButton = document.getElementById('add-media-button');
@@ -805,7 +845,6 @@
         loadFromCloudButton.addEventListener('click', loadFromCloud);
       }
 
-      // Initialize the app
       initGoogleClient();
       updateCloudSyncVisibility();
       updateStatusOptions();
