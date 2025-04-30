@@ -187,7 +187,8 @@
     }
 
     function generateDbUserId() {
-      return Date.now();
+      const id = `db_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      return id;
     }
 
     function sanitizeInput(input) {
@@ -234,7 +235,7 @@
         localStorage.removeItem('mediatracked_googleAccessToken');
         localStorage.removeItem('mediatracked_googleUserEmail');
         localStorage.removeItem('mediatracked_dbUserId');
-        document.getElementById('google-user-email').classList.add('hidden');
+        document.getElement acquaintances.getElementById('google-user-email').classList.add('hidden');
         document.getElementById('google-signin-button').classList.remove('hidden');
         document.getElementById('google-signout-button').classList.add('hidden');
         document.getElementById('sync-status').textContent = 'Signed out from Google.';
@@ -249,6 +250,27 @@
         return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
       }).join(''));
       return JSON.parse(jsonPayload);
+    }
+
+    // Check if the token is expired
+    function isTokenExpired(token) {
+      if (!token) return true;
+      try {
+        const decoded = jwt_decode(token);
+        const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
+        return decoded.exp < currentTime;
+      } catch (error) {
+        console.error('Error decoding token:', error);
+        return true;
+      }
+    }
+
+    // Prompt user to re-authenticate if token is expired
+    function promptReauthentication() {
+      signOut();
+      const syncStatus = document.getElementById('sync-status');
+      syncStatus.textContent = 'Session expired. Please sign in again to sync.';
+      return false;
     }
 
     function calculateMediaTypes() {
@@ -280,6 +302,11 @@
     }
 
     async function fetchAmazonData(keywords, searchIndex, operation = 'SearchItems') {
+      if (isTokenExpired(googleAccessToken)) {
+        promptReauthentication();
+        return null;
+      }
+
       try {
         const response = await fetch(`${BACKEND_URL}/api/amazon`, {
           method: 'POST',
@@ -438,20 +465,43 @@
         return;
       }
 
+      // Check if token is expired
+      if (isTokenExpired(googleAccessToken)) {
+        promptReauthentication();
+        return;
+      }
+
       const syncStatus = document.getElementById('sync-status');
       syncStatus.textContent = 'Syncing to cloud...';
 
       try {
         const mediaTypes = calculateMediaTypes();
 
-        // Sanitize data to ensure it's JSON-serializable
-        const sanitizeForJSON = (obj) => JSON.parse(JSON.stringify(obj, (key, value) =>
-          typeof value === 'function' || value === undefined ? null : value
-        ));
+        // Enhanced sanitization to ensure JSONB compatibility
+        const sanitizeForJSON = (obj) => {
+          if (obj === null || obj === undefined) return null;
+          return JSON.parse(JSON.stringify(obj, (key, value) => {
+            if (value === undefined) return null;
+            if (typeof value === 'function') return null;
+            if (typeof value === 'object' && value !== null) {
+              return Object.fromEntries(
+                Object.entries(value).map(([k, v]) => [k, sanitizeForJSON(v)])
+              );
+            }
+            return value;
+          }));
+        };
 
         const sanitizedMedia = sanitizeForJSON(media);
         const sanitizedSuggestionsCache = sanitizeForJSON(suggestionsCache);
         const sanitizedMediaTypes = sanitizeForJSON(mediaTypes);
+
+        console.log('Sanitized data for /api/sync:', {
+          user_id: dbUserId,
+          media: sanitizedMedia,
+          suggestions_cache: sanitizedSuggestionsCache,
+          media_types: sanitizedMediaTypes
+        });
 
         const response = await fetch(`${BACKEND_URL}/api/sync`, {
           method: 'POST',
@@ -479,6 +529,11 @@
       if (!googleAccessToken || !dbUserId) {
         const syncStatus = document.getElementById('sync-status');
         syncStatus.textContent = 'Please sign in with Google to load data.';
+        return;
+      }
+
+      if (isTokenExpired(googleAccessToken)) {
+        promptReauthentication();
         return;
       }
 
@@ -517,6 +572,11 @@
         return;
       }
 
+      if (isTokenExpired(googleAccessToken)) {
+        promptReauthentication();
+        return;
+      }
+
       dbUserId = localStorage.getItem('mediatracked_dbUserId') || generateDbUserId();
       localStorage.setItem('mediatracked_dbUserId', dbUserId);
 
@@ -528,8 +588,8 @@
             'Authorization': `Bearer ${googleAccessToken}`
           },
           body: JSON.stringify({
-            id: dbUserId,
-            user_id: userId,
+            id: parseInt(dbUserId.split('_')[1], 10), // Extract the timestamp part for the 'id' field
+            user_id: dbUserId, // Use dbUserId instead of userId
             email: googleUserEmail
           })
         });
