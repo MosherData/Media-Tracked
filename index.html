@@ -242,6 +242,15 @@
       googleAccessToken = response.credential;
       localStorage.setItem('mediatracked_googleUserEmail', googleUserEmail);
       localStorage.setItem('mediatracked_googleAccessToken', googleAccessToken);
+      
+      // Enable cloud sync automatically on login
+      isCloudSyncEnabled = true;
+      localStorage.setItem('mediatracked_cloudSyncEnabled', isCloudSyncEnabled);
+      const cloudSyncCheckbox = document.getElementById('cloud-sync-enabled');
+      if (cloudSyncCheckbox) {
+        cloudSyncCheckbox.checked = true;
+      }
+
       updateCloudSyncVisibility();
       document.getElementById('google-user-email').classList.remove('hidden');
       document.getElementById('google-user-email').textContent = `Signed in as: ${googleUserEmail}`;
@@ -249,10 +258,8 @@
       document.getElementById('google-signout-button').classList.remove('hidden');
 
       await updateUserInDatabase();
-      if (isCloudSyncEnabled) {
-        await loadFromCloud(); // Load from cloud immediately after sign-in
-        syncToCloud();
-      }
+      await loadFromCloud();
+      syncToCloud();
     }
 
     function signOut() {
@@ -784,6 +791,7 @@
       const googleSignoutButton = document.getElementById('google-signout-button');
 
       if (cloudSyncCheckbox) {
+        cloudSyncCheckbox.checked = isCloudSyncEnabled;
         cloudSyncCheckbox.addEventListener('change', toggleCloudSync);
       }
 
